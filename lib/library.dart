@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:math' as math;
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:file_picker/file_picker.dart';
@@ -82,6 +83,7 @@ class Library extends ChangeNotifier {
       // A damaged file must not stop the app from opening.
     }
     notifyListeners();
+    unawaited(trimCache());
   }
 
   @visibleForTesting
@@ -453,7 +455,24 @@ class Library extends ChangeNotifier {
     return out;
   }
 
+  /// Cached tracks nobody played for [days] days (counted from when they
+  /// were saved, if they were never played again).
+  List<Track> stale({int days = 30, int? now, String? keepId}) {
+    final t0 = now ?? DateTime.now().millisecondsSinceEpoch;
+    final limit = days * 24 * 3600 * 1000;
+    return cached.where((t) {
+      if (t.id == keepId) return false;
+      final last = math.max(lastPlayed[t.id] ?? 0, t.addedAt);
+      return t0 - last > limit;
+    }).toList();
+  }
+
+  /// Frees space: first drops cached tracks not played for 30 days, then,
+  /// if the cache is still over its limit, the least played ones.
   Future<void> trimCache({String? keepId}) async {
+    for (final t in stale(keepId: keepId)) {
+      await remove(t);
+    }
     for (final t in overLimit(cacheLimitMb * 1024 * 1024, keepId: keepId)) {
       await remove(t);
     }

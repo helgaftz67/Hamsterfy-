@@ -253,6 +253,24 @@ void main() {
       expect((next.snapshot()['profiles'] as List).length, 2);
     });
 
+    test('cache drops tracks not played for 30 days, counting from when they were saved', () {
+      const day = 24 * 3600 * 1000;
+      const now = 100 * day;
+      final lib = Library();
+      Track cachedTrack(String id, int addedAt) =>
+          Track(id: id, title: id, artist: 'X', url: 'https://x/$id', path: '/c/$id', auto: true, size: 10, addedAt: addedAt);
+      lib.tracks['old'] = cachedTrack('old', now - 40 * day);
+      lib.tracks['oldButPlayed'] = cachedTrack('oldButPlayed', now - 40 * day);
+      lib.lastPlayed['oldButPlayed'] = now - 3 * day;
+      lib.tracks['fresh'] = cachedTrack('fresh', now - 5 * day);
+      lib.tracks['playing'] = cachedTrack('playing', now - 60 * day);
+      lib.tracks['kept'] =
+          Track(id: 'kept', title: 'k', artist: 'X', url: 'https://x/k', path: '/c/k', addedAt: now - 90 * day);
+      expect(lib.stale(now: now, keepId: 'playing').map((t) => t.id), ['old']);
+      expect(lib.stale(now: now).map((t) => t.id).toSet(), {'old', 'playing'});
+      expect(lib.stale(now: now, days: 2).map((t) => t.id).toSet(), {'old', 'oldButPlayed', 'fresh', 'playing'});
+    });
+
     test('snapshot round-trips favourites and plays', () {
       final lib = seeded();
       lib.favorites.add('t1');
