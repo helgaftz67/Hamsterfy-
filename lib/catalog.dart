@@ -4,23 +4,26 @@ import 'package:http/http.dart' as http;
 
 import 'models.dart';
 
-/// Open music catalog: Creative Commons netlabel releases hosted by the
-/// Internet Archive. No key or account is needed.
+/// Open music catalog on the Internet Archive: Creative Commons netlabel
+/// releases and the Live Music Archive (concert recordings shared with the
+/// artists' permission). No key or account is needed.
 class Catalog {
   Catalog({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
 
-  static const _scope = 'mediatype:audio AND collection:netlabels';
+  static const _scope = 'mediatype:(audio OR etree) AND collection:(netlabels OR etree)';
 
   /// Finds releases by title or artist. An empty query returns popular ones.
   Future<List<Album>> search(String query) async {
     final q = query.trim().replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), ' ').trim();
-    final lucene = q.isEmpty ? _scope : '(title:($q) OR creator:($q)) AND $_scope';
+    // Artist matches rank first, then titles, then genre tags. With a query
+    // the archive sorts by relevance; without one, by popularity.
+    final lucene = q.isEmpty ? _scope : '(creator:($q)^6 OR title:($q)^4 OR subject:($q)) AND $_scope';
     final uri = Uri.https('archive.org', '/advancedsearch.php', {
       'q': lucene,
       'fl[]': ['identifier', 'title', 'creator'],
-      'sort[]': 'downloads desc',
-      'rows': '40',
+      if (q.isEmpty) 'sort[]': 'downloads desc',
+      'rows': '50',
       'output': 'json',
     });
     final res = await _client.get(uri).timeout(const Duration(seconds: 20));
@@ -60,9 +63,11 @@ class Catalog {
       final name = f['name']?.toString().toLowerCase() ?? '';
       return name.endsWith('.mp3');
     }).toList();
-    // Prefer one encoding per song: originals if present, else derivatives.
+    // Keep one encoding per song: the standard VBR MP3 when the release has
+    // it, otherwise originals, otherwise whatever MP3 files exist.
+    final vbr = mp3.where((f) => f['format'] == 'VBR MP3').toList();
     final originals = mp3.where((f) => f['source'] == 'original').toList();
-    final chosen = originals.isNotEmpty ? originals : mp3;
+    final chosen = vbr.isNotEmpty ? vbr : (originals.isNotEmpty ? originals : mp3);
     chosen.sort((a, b) => _trackNo(a).compareTo(_trackNo(b)));
     return [
       for (final f in chosen)

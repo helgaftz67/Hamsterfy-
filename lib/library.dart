@@ -23,15 +23,39 @@ class Library extends ChangeNotifier {
   final Map<String, double> downloading = {};
 
   late Directory _dir;
+  String _profile = 'main';
   Timer? _saveTimer;
   final _random = Random();
 
-  File get _file => File('${_dir.path}/library.json');
+  /// Each profile keeps its own library file and its own music folder.
+  /// The first profile ("main") uses the original un-suffixed names.
+  static String libraryFileName(String profile) => profile == 'main' ? 'library.json' : 'library_$profile.json';
+  static String musicDirName(String profile) => profile == 'main' ? 'music' : 'music_$profile';
 
-  Future<void> load() async {
+  File get _file => File('${_dir.path}/${libraryFileName(_profile)}');
+  String get _music => '${_dir.path}/${musicDirName(_profile)}';
+
+  /// Switches to [profile]: saves pending changes of the previous one,
+  /// forgets its data and loads the new collection.
+  Future<void> open(String profile) async {
     _dir = await getApplicationDocumentsDirectory();
-    await Directory('${_dir.path}/music').create(recursive: true);
-    if (!await _file.exists()) return;
+    if (_saveTimer?.isActive ?? false) {
+      _saveTimer!.cancel();
+      try {
+        await _file.writeAsString(jsonEncode(snapshot()));
+      } catch (_) {}
+    }
+    _profile = profile;
+    tracks.clear();
+    favorites.clear();
+    plays.clear();
+    lastPlayed.clear();
+    downloading.clear();
+    await Directory(_music).create(recursive: true);
+    if (!await _file.exists()) {
+      notifyListeners();
+      return;
+    }
     try {
       restore(jsonDecode(await _file.readAsString()) as Map<String, dynamic>);
     } catch (_) {
@@ -61,9 +85,11 @@ class Library extends ChangeNotifier {
   void _changed() {
     notifyListeners();
     _saveTimer?.cancel();
+    final file = _file;
+    final data = jsonEncode(snapshot());
     _saveTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
-        await _file.writeAsString(jsonEncode(snapshot()));
+        await file.writeAsString(data);
       } catch (_) {}
     });
   }
@@ -74,6 +100,16 @@ class Library extends ChangeNotifier {
   List<Track> get favoriteTracks => all.where((t) => favorites.contains(t.id)).toList();
   List<Track> get downloaded => all.where((t) => t.isLocal).toList();
   bool isFavorite(Track t) => favorites.contains(t.id);
+
+  /// Filters [source] by words found in the title, artist or album.
+  static List<Track> filter(List<Track> source, String query) {
+    final words = query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return source;
+    return source.where((t) {
+      final hay = '${t.title} ${t.artist} ${t.album}'.toLowerCase();
+      return words.every(hay.contains);
+    }).toList();
+  }
 
   // ---- Favourites and history --------------------------------------------
 
@@ -104,7 +140,7 @@ class Library extends ChangeNotifier {
       final ext = (f.extension ?? 'mp3').toLowerCase();
       final id = 'local:${f.name}';
       if (tracks[id]?.isLocal ?? false) continue;
-      final dest = File('${_dir.path}/music/${_safe(f.name)}');
+      final dest = File('$_music/${_safe(f.name)}');
       final sink = dest.openWrite();
       await sink.addStream(f.xFile.openRead());
       await sink.close();
@@ -141,7 +177,7 @@ class Library extends ChangeNotifier {
     if (t.isLocal || t.url == null || downloading.containsKey(t.id)) return;
     downloading[t.id] = 0;
     notifyListeners();
-    final dest = File('${_dir.path}/music/${_safe(t.id)}.mp3');
+    final dest = File('$_music/${_safe(t.id)}.mp3');
     final client = http.Client();
     try {
       final res = await client.send(http.Request('GET', Uri.parse(t.url!)));

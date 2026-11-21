@@ -71,6 +71,15 @@ class Player extends ChangeNotifier {
     }
   }
 
+  /// Stops playback and empties the queue, e.g. when the profile changes.
+  Future<void> reset() async {
+    await audio.stop();
+    queue = [];
+    current = null;
+    error = null;
+    notifyListeners();
+  }
+
   Future<void> jumpTo(int i) async {
     await audio.seek(Duration.zero, index: i);
     unawaited(audio.play());

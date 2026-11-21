@@ -2,6 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hamsterfy/catalog.dart';
 import 'package:hamsterfy/library.dart';
 import 'package:hamsterfy/models.dart';
+import 'package:hamsterfy/player.dart';
+import 'package:hamsterfy/profiles.dart';
+
+class FakePlayer implements Player {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
 
 void main() {
   group('Catalog parsing', () {
@@ -20,7 +27,7 @@ void main() {
       const body = '{"files":['
           '{"name":"02 b song.mp3","source":"original","track":"2","title":"B","length":"3:05"},'
           '{"name":"01_a.mp3","source":"original","track":"1/2","length":"61.5"},'
-          '{"name":"01_a_64kb.mp3","source":"derivative"},'
+          '{"name":"01_a_64kb.mp3","source":"derivative","format":"64Kbps MP3"},'
           '{"name":"cover.jpg","source":"original"}]}';
       final tracks = Catalog.parseTracks(body, Album(id: 'rel', title: 'Rel', artist: 'Art'));
       expect(tracks.map((t) => t.title), ['01 a', 'B']);
@@ -57,6 +64,28 @@ void main() {
       for (var n = 0; n < 20; n++) {
         expect(lib.wave(now: now).first.id == 't0', isFalse);
       }
+    });
+
+    test('library search matches every word across title, artist and album', () {
+      final list = [
+        Track(id: 'a', title: 'Night Drive', artist: 'Kavi', album: 'Roads'),
+        Track(id: 'b', title: 'Morning', artist: 'Night Owls', album: 'Dawn'),
+      ];
+      expect(Library.filter(list, 'night').length, 2);
+      expect(Library.filter(list, 'NIGHT roads').single.id, 'a');
+      expect(Library.filter(list, '  ').length, 2);
+      expect(Library.filter(list, 'zzz'), isEmpty);
+    });
+
+    test('profiles keep separate files and PIN check works', () {
+      expect(Library.libraryFileName('main'), 'library.json');
+      expect(Library.libraryFileName('p1'), 'library_p1.json');
+      expect(Library.musicDirName('p1'), 'music_p1');
+      final p = Profile(id: 'p1', name: 'Оля', pinHash: Profiles.hashPin('p1', '1234'));
+      final profiles = Profiles(Library(), FakePlayer());
+      expect(profiles.checkPin(p, '1234'), isTrue);
+      expect(profiles.checkPin(p, '0000'), isFalse);
+      expect(profiles.checkPin(Profile(id: 'x', name: 'Без пина'), ''), isTrue);
     });
 
     test('snapshot round-trips favourites and plays', () {

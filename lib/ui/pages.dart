@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../library.dart';
 import '../main.dart';
 import '../models.dart';
+import 'profile_ui.dart';
 import 'theme.dart';
 
 // ---------------------------------------------------------------- Home ----
@@ -63,9 +65,21 @@ class _HomePageState extends State<HomePage> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
-                    child: Text('Hamsterfy', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 12, 8),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Hamsterfy', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                        ),
+                        if (profiles.current != null)
+                          IconButton(
+                            tooltip: 'Аккаунт',
+                            onPressed: () => showAccountSheet(context),
+                            icon: ProfileAvatar(profiles.current!),
+                          ),
+                      ],
+                    ),
                   ),
                   _Wave(enabled: !empty),
                   if (empty)
@@ -417,14 +431,14 @@ class _CatalogPageState extends State<CatalogPage> {
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Свободная музыка с Internet Archive: слушайте и скачивайте без ограничений.',
+              child: Text('Свободная музыка и концертные записи с Internet Archive. Ищите по исполнителю, названию или жанру.',
                   style: TextStyle(color: kMuted)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: SearchBar(
                 controller: _query,
-                hintText: 'Исполнитель или релиз',
+                hintText: 'Исполнитель, релиз или жанр',
                 leading: const Icon(Icons.search),
                 elevation: const WidgetStatePropertyAll(0),
                 backgroundColor: const WidgetStatePropertyAll(kSurface),
@@ -459,7 +473,7 @@ class _CatalogPageState extends State<CatalogPage> {
                   }
                   final albums = snap.data!;
                   if (albums.isEmpty) {
-                    return const _Message('Ничего не нашлось. Попробуйте другое название или имя исполнителя.');
+                    return const _Message('В открытом каталоге этого нет. Здесь только свободная музыка и концертные записи. Трек, который есть у вас файлом, добавьте в Медиатеке.');
                   }
                   return ListView.builder(
                     itemCount: albums.length,
@@ -607,6 +621,7 @@ class LibraryPage extends StatefulWidget {
 class _LibraryPageState extends State<LibraryPage> {
   _Filter _filter = _Filter.all;
   bool _importing = false;
+  String _query = '';
 
   Future<void> _import() async {
     setState(() => _importing = true);
@@ -634,11 +649,12 @@ class _LibraryPageState extends State<LibraryPage> {
         child: ListenableBuilder(
           listenable: library,
           builder: (context, _) {
-            final tracks = switch (_filter) {
+            final inFilter = switch (_filter) {
               _Filter.all => library.all,
               _Filter.favorites => library.favoriteTracks,
               _Filter.downloaded => library.downloaded,
             };
+            final tracks = Library.filter(inFilter, _query);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -664,8 +680,26 @@ class _LibraryPageState extends State<LibraryPage> {
                     ],
                   ),
                 ),
+                if (library.tracks.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    child: TextField(
+                      onChanged: (v) => setState(() => _query = v),
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Поиск по медиатеке',
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: kSurface,
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ),
                 Expanded(
-                  child: tracks.isEmpty
+                  child: tracks.isEmpty && _query.trim().isNotEmpty
+                      ? const _Message('В медиатеке такого нет. Проверьте написание или поищите в Каталоге.')
+                      : tracks.isEmpty
                       ? _Message(switch (_filter) {
                           _Filter.all =>
                             'Здесь появится ваша музыка. Добавьте файлы с телефона или отметьте треки в Каталоге.',

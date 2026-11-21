@@ -4,13 +4,16 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'catalog.dart';
 import 'library.dart';
 import 'player.dart';
+import 'profiles.dart';
 import 'ui/pages.dart';
 import 'ui/player_ui.dart';
+import 'ui/profile_ui.dart';
 import 'ui/theme.dart';
 
 final library = Library();
 final catalog = Catalog();
 late final Player player;
+late final Profiles profiles;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,8 +22,9 @@ Future<void> main() async {
     androidNotificationChannelName: 'Воспроизведение',
     androidNotificationOngoing: true,
   );
-  await library.load();
   player = Player(library);
+  profiles = Profiles(library, player);
+  await profiles.load();
   runApp(const HamsterfyApp());
 }
 
@@ -33,7 +37,14 @@ class HamsterfyApp extends StatelessWidget {
       title: 'Hamsterfy',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      home: const Shell(),
+      home: ListenableBuilder(
+        listenable: profiles,
+        builder: (context, _) {
+          final p = profiles.current;
+          // A fresh Shell per account, so no screen keeps the previous one's data.
+          return p == null ? const ProfileGate() : Shell(key: ValueKey(p.id));
+        },
+      ),
     );
   }
 }
