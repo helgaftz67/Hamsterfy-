@@ -1,0 +1,452 @@
+<title>Hamsterfy: дизайн-рефы</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: референс-доска. Узкая колонка текста, широкие сетки карточек приложений,
+   схемы экранов как «контактный лист», таблицы ссылок по паттернам. */
+:root{
+  --bg:#F2F1F7; --surface:#FFFFFF; --sunken:#E7E5F0; --ink:#1A1730; --muted:#5F5B78;
+  --line:#D5D2E2; --accent:#4B2FE0; --accent-ink:#FFFFFF; --amber:#B86E00; --wire:#C9C5DA; --wire-strong:#8C87A6;
+  --display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --body:"Golos Text",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#121019; --surface:#1C1926; --sunken:#262233; --ink:#ECEAF5; --muted:#A39FBC;
+  --line:#34304A; --accent:#A796FF; --accent-ink:#15121F; --amber:#FFB938; --wire:#3D3856; --wire-strong:#77719A; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#121019; --surface:#1C1926; --sunken:#262233; --ink:#ECEAF5; --muted:#A39FBC;
+  --line:#34304A; --accent:#A796FF; --accent-ink:#15121F; --amber:#FFB938; --wire:#3D3856; --wire-strong:#77719A; color-scheme:dark }
+
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 72px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex;flex-direction:column;gap:56px}
+a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:3px}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+h1,h2,h3{margin:0;text-wrap:balance}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,5vw,46px);line-height:1.1;letter-spacing:-.01em}
+h2{font-family:var(--display);font-weight:500;font-size:clamp(19px,2.6vw,24px);line-height:1.25}
+h3{font-size:17px;font-weight:600}
+p{margin:0}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lead{max-width:65ch;color:var(--muted);font-size:17px}
+header{display:flex;flex-direction:column;gap:16px}
+nav{display:flex;flex-wrap:wrap;gap:8px}
+nav a{font-family:var(--mono);font-size:13px;text-decoration:none;color:var(--ink);border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+nav a:hover{border-color:var(--accent);color:var(--accent)}
+.note{border-left:3px solid var(--amber);padding:4px 0 4px 14px;max-width:70ch;color:var(--muted);font-size:15px}
+.note b{color:var(--ink);font-weight:600}
+section{display:flex;flex-direction:column;gap:20px}
+.sec-head{display:flex;flex-direction:column;gap:6px}
+.sec-head p{max-width:65ch;color:var(--muted)}
+
+/* app cards */
+.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px}
+.app{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.app-top{display:flex;align-items:center;gap:10px}
+.dot{width:14px;height:14px;border-radius:4px;flex:none;border:1px solid var(--line)}
+.tag{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+.app ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:15px}
+.app .take{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+.links{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:14px;margin-top:auto;padding-top:4px}
+
+/* wireframes */
+.frames{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:24px 16px}
+.frame{display:flex;flex-direction:column;gap:10px;min-width:0}
+.phone{aspect-ratio:9/17;max-width:100%;background:var(--surface);border:1.5px solid var(--wire-strong);border-radius:18px;padding:10px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.b{background:var(--wire);border-radius:4px;flex:none}
+.b.s{background:var(--wire-strong)} .b.a{background:var(--accent)}
+.row{display:flex;gap:6px;flex:none;align-items:center}
+.grow{flex:1 1 auto;min-height:0}
+.tabs{display:flex;justify-content:space-around;border-top:1px solid var(--wire);padding-top:6px;flex:none}
+.tabs i{width:12px;height:12px;border-radius:50%;background:var(--wire);display:block}
+.tabs i.on{background:var(--accent)}
+.mini{display:flex;gap:6px;align-items:center;background:var(--sunken);border-radius:8px;padding:5px;flex:none}
+.frame h3{font-size:15px}
+.frame p{font-size:13.5px;color:var(--muted);line-height:1.45}
+
+/* tables */
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:620px}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+td:first-child{font-weight:600;white-space:nowrap}
+td.why{color:var(--muted)}
+
+/* tokens */
+.tokens{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tok{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+.sw{height:56px}
+.tok div:last-child{padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.tok code{font-family:var(--mono);font-size:13px}
+.tok span{font-size:12.5px;color:var(--muted)}
+
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.box ol,.box ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:15px}
+footer{font-size:13.5px;color:var(--muted);max-width:75ch}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Hamsterfy · референсы интерфейса · ноябрь 2026</span>
+  <h1>Как устроены музыкальные приложения, на которые мы равняемся</h1>
+  <p class="lead">Подборка для локального аналога Spotify и Яндекс Музыки: что взять у каждого сервиса, схемы ключевых экранов и прямые ссылки на экраны и флоу в Mobbin.</p>
+  <nav>
+    <a href="#apps">Приложения</a><a href="#screens">Экраны</a><a href="#mobbin">Mobbin</a><a href="#tokens">Цвет и шрифт</a><a href="#plan">Что взять в Hamsterfy</a>
+  </nav>
+  <p class="note"><b>Про Mobbin.</b> Ссылки найдены через поиск и ведут на реальные страницы Mobbin, но сами скриншоты я не просматривал: из рабочей среды сайт недоступен. Часть экранов Mobbin показывает только после входа в аккаунт. Описания флоу взяты из подписей Mobbin.</p>
+</header>
+
+<section id="apps">
+  <div class="sec-head">
+    <span class="eyebrow">Раздел 1</span>
+    <h2>Приложения и что у них стоит перенять</h2>
+    <p>Стриминги задают привычки пользователя. Локальные плееры показывают, как те же привычки работают без каталога и рекомендаций из облака.</p>
+  </div>
+  <div class="apps">
+
+    <article class="app">
+      <div class="app-top"><span class="dot" style="background:#1ED760"></span><h3>Spotify</h3><span class="tag">iOS · Android · Web · Desktop</span></div>
+      <span class="take">Что взять</span>
+      <ul>
+        <li>Тёмная база и цвет из обложки: фон плейлиста и плеера окрашивается под альбом.</li>
+        <li>Главная из коротких плиток «недавнее» сверху и горизонтальных полок ниже.</li>
+        <li>Медиатека с фильтрами-чипами: плейлисты, альбомы, исполнители, скачанное.</li>
+        <li>Мини-плеер над таб-баром, свайп вверх раскрывает полный экран.</li>
+        <li>Таймер сна и повтор как отдельные короткие флоу.</li>
+      </ul>
+      <div class="links">
+        <a href="https://mobbin.com/explore/screens/53c8ee32-2e3e-4873-95db-41bb1aaa47eb">Главная, Mobbin</a>
+        <a href="https://mobbin.com/explore/flows/dafca833-7bf4-46e3-97d0-4769403f8f7a">Плейлист, Mobbin</a>
+        <a href="https://screensdesign.com/apps/spotify-music-and-podcasts/">Все экраны, ScreensDesign</a>
+        <a href="https://spotify.design/article/ask-spotify-design-07">Spotify Design</a>
+        <a href="https://ixd.prattsi.org/2026/02/design-critique-spotify-ios-app-2/">Критика iOS, Pratt</a>
+      </div>
+    </article>
+
+    <article class="app">
+      <div class="app-top"><span class="dot" style="background:#FFCC00"></span><h3>Яндекс Музыка</h3><span class="tag">iOS · Android · Web · Desktop</span></div>
+      <span class="take">Что взять</span>
+      <ul>
+        <li>Одна большая кнопка «Моя волна» в центре главной: запуск музыки в одно касание.</li>
+        <li>Генеративная анимация вместо статичной обложки: палитра под настроение, движение под ритм, импульс после лайка.</li>
+        <li>Быстрый доступ к любимым трекам, истории и альбомам сразу под волной.</li>
+        <li>«Волна по коллекции»: бесконечный поток только из своей медиатеки. Для локального плеера это главная идея.</li>
+        <li>Урок из критики редизайна: не ломать привычные функции ради нового вида.</li>
+      </ul>
+      <div class="links">
+        <a href="https://rozetked.me/reviews/31538-obzor-obnovlennogo-prilozheniya-yandeks-muzyka-krasivo">Обзор, Rozetked</a>
+        <a href="https://rozetked.me/news/33038-v-yandeks-muzyke-obnovilas-moya-volna-individual-nyy-dizayn-dlya-kazhdogo-pol-zovatelya">Дизайн волны</a>
+        <a href="https://dtf.ru/music/2313118">Главный экран, DTF</a>
+        <a href="https://habr.com/en/articles/856716">UX-разбор десктопа, Хабр</a>
+        <a href="https://t-j.ru/new-wave-4-u/">Реакция пользователей, Т—Ж</a>
+      </div>
+    </article>
+
+    <article class="app">
+      <div class="app-top"><span class="dot" style="background:#FA2D48"></span><h3>Apple Music</h3><span class="tag">iOS · macOS · Web</span></div>
+      <span class="take">Что взять</span>
+      <ul>
+        <li>Крупная типографика заголовков разделов и много воздуха в светлой теме.</li>
+        <li>Текст песни как отдельный режим плеера: крупные строки, прокрутка следует за треком.</li>
+        <li>Медиатека как список разделов (плейлисты, артисты, альбомы, песни) плюс недавно добавленное.</li>
+        <li>Плеер-шторка: тянется вниз, под ней остаётся контекст.</li>
+      </ul>
+      <div class="links">
+        <a href="https://mobbin.com/explore/flows/4e537f6f-ea53-4ba8-bf19-f97f66913d14">Запуск трека, Mobbin</a>
+        <a href="https://mobbin.com/explore/flows/d77c0fcb-e5b4-47aa-b4b9-546a1e4af475">Текст песни, Mobbin</a>
+        <a href="https://mobbin.com/explore/screens/5de84744-c425-4e36-8b8c-2a7b4e5eef9d">Радио, Mobbin</a>
+        <a href="https://screensdesign.com/apps/apple-music/">157 экранов, ScreensDesign</a>
+      </div>
+    </article>
+
+    <article class="app">
+      <div class="app-top"><span class="dot" style="background:#FF0000"></span><h3>YouTube Music</h3><span class="tag">iOS · Android · Web</span></div>
+      <span class="take">Что взять</span>
+      <ul>
+        <li>Три вкладки внизу раскрытого плеера: «Далее», «Текст», «Похожее». Очередь не прячется в меню.</li>
+        <li>Чипы настроений над лентой главной.</li>
+        <li>Сегментированный переключатель в плеере (в оригинале «песня / видео»).</li>
+      </ul>
+      <div class="links">
+        <a href="https://mobbin.com/explore/screens/d9b90824-ac50-4e7a-a306-28f3d2d0b39d">Раскрытый плеер, Mobbin</a>
+        <a href="https://mobbin.com/explore/screens/1d4334dd-1af5-4f4f-b81a-306ed0b01563">Интерфейс плеера, Mobbin</a>
+        <a href="https://screensdesign.com/apps/youtube-music/">Экраны, ScreensDesign</a>
+      </div>
+    </article>
+
+    <article class="app">
+      <div class="app-top"><span class="dot" style="background:#000000"></span><h3>TIDAL</h3><span class="tag">iOS · Android · Web</span></div>
+      <span class="take">Что взять</span>
+      <ul>
+        <li>Строгий монохром: интерфейс уступает место обложкам.</li>
+        <li>Полноэкранный веб-плеер с очередью сбоку.</li>
+        <li>Метка качества звука рядом с треком. Для локальных файлов это формат и битрейт: FLAC, 24/96, MP3 320.</li>
+      </ul>
+      <div class="links">
+        <a href="https://mobbin.com/explore/mobile/screens/audio-player">Плееры, Mobbin</a>
+        <a href="https://mobbin.com/explore/web/screens/audio-player">Веб-плееры, Mobbin</a>
+      </div>
+    </article>
+
+    <article class="app">
+      <div class="app-top"><span class="dot" style="background:#A238FF"></span><h3>Deezer</h3><span class="tag">iOS · Android · Web</span></div>
+      <span class="take">Что взять</span>
+      <ul>
+        <li>Кнопка Flow на главной: тот же приём «одна кнопка запускает поток», что у волны.</li>
+        <li>Экран эквалайзера с пресетами и меню выбора аудиовыхода.</li>
+        <li>Перетаскивание треков для смены порядка в веб-плеере.</li>
+      </ul>
+      <div class="links">
+        <a href="https://screensdesign.com/apps/deezer-music-player-podcast/">Экраны, ScreensDesign</a>
+        <a href="https://mobbin.com/explore/web/app-categories/music-audio">Веб-категория, Mobbin</a>
+      </div>
+    </article>
+
+    <article class="app">
+      <div class="app-top"><span class="dot" style="background:#FF5500"></span><h3>SoundCloud</h3><span class="tag">iOS · Android · Web</span></div>
+      <span class="take">Что взять</span>
+      <ul>
+        <li>Волновая форма трека вместо обычной полосы перемотки. Для локальных файлов её можно посчитать заранее.</li>
+        <li>Поиск, совмещённый с коллекциями и закладками.</li>
+        <li>Экран загрузок с понятным статусом каждого трека.</li>
+      </ul>
+      <div class="links">
+        <a href="https://mobbin.com/colors/brand/soundcloud">Палитра бренда, Mobbin</a>
+        <a href="https://mobbin.com/explore/mobile/screens/downloads-available-offline">Загрузки, Mobbin</a>
+      </div>
+    </article>
+
+    <article class="app">
+      <div class="app-top"><span class="dot" style="background:var(--accent)"></span><h3>Локальные плееры</h3><span class="tag">Doppler · Marvis · Namida · Plexamp</span></div>
+      <span class="take">Что взять</span>
+      <ul>
+        <li><b>Doppler</b> (iOS, MP3 и FLAC): оформление подстраивается под музыку, очередь всегда под рукой.</li>
+        <li><b>Marvis Pro</b> (iOS): минимализм с глубокой настройкой главной: пользователь сам собирает секции.</li>
+        <li><b>Namida</b> (Android, Flutter): Material 3 и богатая кастомизация, обозреватели хвалят интерфейс.</li>
+        <li><b>Plexamp</b>: клиент к своему серверу, пример плеера без чужого каталога.</li>
+      </ul>
+      <div class="links">
+        <a href="https://apps.apple.com/sa/app/id1468459747">Doppler</a>
+        <a href="https://apps.apple.com/au/app/marvis-pro/id1447768809">Marvis Pro</a>
+        <a href="https://beebom.com/best-music-players-android/amp/">Namida и другие, Beebom</a>
+        <a href="https://www.androidauthority.com/best-music-player-apps-android-208990/">Обзор плееров, Android Authority</a>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="sec-head">
+    <span class="eyebrow">Раздел 2</span>
+    <h2>Ключевые экраны: общая анатомия</h2>
+    <p>Схемы показывают то, что совпадает почти у всех сервисов. Это и есть привычка пользователя, от неё выгодно не отходить.</p>
+  </div>
+  <div class="frames">
+    <div class="frame">
+      <div class="phone" aria-hidden="true">
+        <div class="row"><div class="b s" style="width:45%;height:9px"></div></div>
+        <div class="row"><div class="b" style="width:22%;height:8px;border-radius:9px"></div><div class="b" style="width:22%;height:8px;border-radius:9px"></div><div class="b" style="width:22%;height:8px;border-radius:9px"></div></div>
+        <div class="row"><div class="b" style="flex:1;height:18px"></div><div class="b" style="flex:1;height:18px"></div></div>
+        <div class="row"><div class="b" style="flex:1;height:18px"></div><div class="b" style="flex:1;height:18px"></div></div>
+        <div class="b s" style="width:38%;height:7px;margin-top:4px"></div>
+        <div class="row grow" style="align-items:stretch"><div class="b" style="flex:1"></div><div class="b" style="flex:1"></div><div class="b" style="flex:.4"></div></div>
+        <div class="mini"><div class="b s" style="width:16px;height:16px"></div><div class="b" style="flex:1;height:6px"></div><div class="b a" style="width:10px;height:10px;border-radius:50%"></div></div>
+        <div class="tabs"><i class="on"></i><i></i><i></i></div>
+      </div>
+      <h3>Главная</h3>
+      <p>Чипы-фильтры, сетка быстрых плиток, ниже полки с обложками. У Яндекса вместо плиток одна большая кнопка потока.</p>
+    </div>
+    <div class="frame">
+      <div class="phone" aria-hidden="true">
+        <div class="row" style="justify-content:space-between"><div class="b" style="width:10px;height:6px"></div><div class="b" style="width:36%;height:6px"></div><div class="b" style="width:10px;height:6px"></div></div>
+        <div class="b grow" style="border-radius:8px"></div>
+        <div class="row" style="justify-content:space-between"><div><div class="b s" style="width:70px;height:8px;margin-bottom:4px"></div><div class="b" style="width:46px;height:6px"></div></div><div class="b a" style="width:12px;height:12px;border-radius:50%"></div></div>
+        <div class="b" style="height:4px;border-radius:2px;position:relative"><div class="b s" style="width:40%;height:4px;border-radius:2px"></div></div>
+        <div class="row" style="justify-content:space-around;padding:4px 0"><div class="b" style="width:9px;height:9px"></div><div class="b" style="width:12px;height:12px"></div><div class="b a" style="width:24px;height:24px;border-radius:50%"></div><div class="b" style="width:12px;height:12px"></div><div class="b" style="width:9px;height:9px"></div></div>
+        <div class="row" style="justify-content:space-around"><div class="b" style="width:22%;height:6px"></div><div class="b" style="width:22%;height:6px"></div><div class="b" style="width:22%;height:6px"></div></div>
+      </div>
+      <h3>Плеер</h3>
+      <p>Обложка на пол-экрана, название и лайк, перемотка, пять кнопок управления. Внизу входы в очередь, текст и устройства.</p>
+    </div>
+    <div class="frame">
+      <div class="phone" aria-hidden="true">
+        <div class="row" style="justify-content:space-between"><div class="b s" style="width:50%;height:9px"></div><div class="b" style="width:10px;height:10px"></div></div>
+        <div class="row"><div class="b a" style="width:26%;height:8px;border-radius:9px"></div><div class="b" style="width:22%;height:8px;border-radius:9px"></div><div class="b" style="width:26%;height:8px;border-radius:9px"></div></div>
+        <div class="row"><div class="b" style="width:22px;height:22px"></div><div style="flex:1"><div class="b s" style="width:70%;height:6px;margin-bottom:4px"></div><div class="b" style="width:45%;height:5px"></div></div></div>
+        <div class="row"><div class="b" style="width:22px;height:22px;border-radius:50%"></div><div style="flex:1"><div class="b s" style="width:55%;height:6px;margin-bottom:4px"></div><div class="b" style="width:35%;height:5px"></div></div></div>
+        <div class="row"><div class="b" style="width:22px;height:22px"></div><div style="flex:1"><div class="b s" style="width:64%;height:6px;margin-bottom:4px"></div><div class="b" style="width:40%;height:5px"></div></div></div>
+        <div class="row"><div class="b" style="width:22px;height:22px"></div><div style="flex:1"><div class="b s" style="width:50%;height:6px;margin-bottom:4px"></div><div class="b" style="width:30%;height:5px"></div></div></div>
+        <div class="grow"></div>
+        <div class="mini"><div class="b s" style="width:16px;height:16px"></div><div class="b" style="flex:1;height:6px"></div><div class="b a" style="width:10px;height:10px;border-radius:50%"></div></div>
+        <div class="tabs"><i></i><i></i><i class="on"></i></div>
+      </div>
+      <h3>Медиатека</h3>
+      <p>Чипы типа контента, сортировка, смешанный список. Артисты отличаются круглой аватаркой, остальное квадратной обложкой.</p>
+    </div>
+    <div class="frame">
+      <div class="phone" aria-hidden="true">
+        <div class="b" style="width:54%;aspect-ratio:1;align-self:center;border-radius:6px"></div>
+        <div class="b s" style="width:62%;height:9px"></div>
+        <div class="b" style="width:40%;height:6px"></div>
+        <div class="row" style="justify-content:space-between"><div class="row"><div class="b" style="width:10px;height:10px"></div><div class="b" style="width:10px;height:10px"></div><div class="b" style="width:10px;height:10px"></div></div><div class="row"><div class="b" style="width:12px;height:12px"></div><div class="b a" style="width:22px;height:22px;border-radius:50%"></div></div></div>
+        <div class="row"><div class="b" style="width:18px;height:18px"></div><div class="b s" style="flex:1;height:6px"></div><div class="b" style="width:6px;height:6px"></div></div>
+        <div class="row"><div class="b" style="width:18px;height:18px"></div><div class="b s" style="flex:.8;height:6px"></div><div style="flex:.2"></div><div class="b" style="width:6px;height:6px"></div></div>
+        <div class="row"><div class="b" style="width:18px;height:18px"></div><div class="b s" style="flex:.9;height:6px"></div><div style="flex:.1"></div><div class="b" style="width:6px;height:6px"></div></div>
+        <div class="grow"></div>
+        <div class="tabs"><i></i><i></i><i class="on"></i></div>
+      </div>
+      <h3>Плейлист и альбом</h3>
+      <p>Шапка с обложкой и цветом из неё, ряд действий, крупная кнопка Play справа, список треков с меню «три точки».</p>
+    </div>
+    <div class="frame">
+      <div class="phone" aria-hidden="true">
+        <div class="row"><div class="b" style="width:22px;height:22px"></div><div style="flex:1"><div class="b s" style="width:60%;height:6px;margin-bottom:4px"></div><div class="b" style="width:40%;height:5px"></div></div></div>
+        <div class="row" style="justify-content:space-around;border-bottom:1px solid var(--wire);padding-bottom:6px"><div class="b a" style="width:24%;height:6px"></div><div class="b" style="width:24%;height:6px"></div><div class="b" style="width:24%;height:6px"></div></div>
+        <div class="row"><div class="b" style="width:16px;height:16px"></div><div class="b s" style="flex:1;height:6px"></div><div class="b" style="width:8px;height:6px"></div></div>
+        <div class="row"><div class="b" style="width:16px;height:16px"></div><div class="b s" style="flex:.8;height:6px"></div><div style="flex:.2"></div><div class="b" style="width:8px;height:6px"></div></div>
+        <div class="row"><div class="b" style="width:16px;height:16px"></div><div class="b s" style="flex:.9;height:6px"></div><div style="flex:.1"></div><div class="b" style="width:8px;height:6px"></div></div>
+        <div class="row"><div class="b" style="width:16px;height:16px"></div><div class="b s" style="flex:.7;height:6px"></div><div style="flex:.3"></div><div class="b" style="width:8px;height:6px"></div></div>
+        <div class="grow"></div>
+        <div class="row" style="justify-content:space-around"><div class="b" style="width:12px;height:12px"></div><div class="b a" style="width:22px;height:22px;border-radius:50%"></div><div class="b" style="width:12px;height:12px"></div></div>
+      </div>
+      <h3>Очередь и текст</h3>
+      <p>Вкладки «Далее / Текст / Похожее» как у YouTube Music. Строки очереди с ручкой для перетаскивания, управление остаётся внизу.</p>
+    </div>
+    <div class="frame">
+      <div class="phone" aria-hidden="true">
+        <div class="b" style="height:16px;border-radius:9px"></div>
+        <div class="b s" style="width:44%;height:7px;margin-top:4px"></div>
+        <div class="row grow" style="align-items:stretch"><div class="b" style="flex:1"></div><div class="b" style="flex:1"></div></div>
+        <div class="row grow" style="align-items:stretch"><div class="b" style="flex:1"></div><div class="b" style="flex:1"></div></div>
+        <div class="row grow" style="align-items:stretch"><div class="b" style="flex:1"></div><div class="b" style="flex:1"></div></div>
+        <div class="mini"><div class="b s" style="width:16px;height:16px"></div><div class="b" style="flex:1;height:6px"></div><div class="b a" style="width:10px;height:10px;border-radius:50%"></div></div>
+        <div class="tabs"><i></i><i class="on"></i><i></i></div>
+      </div>
+      <h3>Поиск</h3>
+      <p>Поле сверху, под ним цветные плитки жанров. Во время ввода плитки сменяются списком с чипами «треки / альбомы / артисты».</p>
+    </div>
+  </div>
+</section>
+
+<section id="mobbin">
+  <div class="sec-head">
+    <span class="eyebrow">Раздел 3</span>
+    <h2>Ссылки на Mobbin</h2>
+    <p>Сначала подборки по типу экрана: в них сразу видны десятки приложений рядом. Ниже отдельные флоу конкретных сервисов.</p>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Подборка</th><th>Ссылка</th><th>Зачем смотреть</th></tr></thead>
+    <tbody>
+      <tr><td>Музыка и аудио, mobile</td><td><a href="https://mobbin.com/explore/mobile/app-categories/music-audio">app-categories/music-audio</a></td><td class="why">Все музыкальные приложения каталога: стартовая точка.</td></tr>
+      <tr><td>Музыка и аудио, web</td><td><a href="https://mobbin.com/explore/web/app-categories/music-audio">web/app-categories/music-audio</a></td><td class="why">Десктопная раскладка: сайдбар, нижняя панель плеера, очередь справа.</td></tr>
+      <tr><td>Music Player UI</td><td><a href="https://mobbin.com/explore/mobile/screens/music-player-ui">screens/music-player-ui</a></td><td class="why">Полноэкранные плееры разных сервисов.</td></tr>
+      <tr><td>Audio Player, mobile</td><td><a href="https://mobbin.com/explore/mobile/screens/audio-player">screens/audio-player</a></td><td class="why">Плееры и мини-плееры, включая TIDAL и Shazam.</td></tr>
+      <tr><td>Audio Player, web</td><td><a href="https://mobbin.com/explore/web/screens/audio-player">web/screens/audio-player</a></td><td class="why">Нижняя панель и полноэкранный режим в браузере.</td></tr>
+      <tr><td>Playlists</td><td><a href="https://mobbin.com/explore/mobile/screens/playlists">screens/playlists</a></td><td class="why">Списки плейлистов, детальный экран, поиск внутри.</td></tr>
+      <tr><td>Song &amp; Podcast Detail</td><td><a href="https://mobbin.com/explore/mobile/screens/song-podcast-detail">screens/song-podcast-detail</a></td><td class="why">Экран трека, текст песни, раскрытый плеер.</td></tr>
+      <tr><td>Listening to audio, флоу</td><td><a href="https://mobbin.com/explore/mobile/flows/listening-to-audio">flows/listening-to-audio</a></td><td class="why">Путь от выбора трека до очереди и текста, по шагам.</td></tr>
+      <tr><td>Downloads</td><td><a href="https://mobbin.com/explore/mobile/screens/downloads-available-offline">screens/downloads-available-offline</a></td><td class="why">Статусы офлайн-файлов: пригодится для импорта локальной библиотеки.</td></tr>
+      <tr><td>Like</td><td><a href="https://mobbin.com/explore/mobile/screens/like-upvote">screens/like-upvote</a></td><td class="why">Варианты лайка и обратной связи после него.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Сервис</th><th>Флоу или экран</th><th>Что внутри</th></tr></thead>
+    <tbody>
+      <tr><td>Spotify iOS</td><td><a href="https://mobbin.com/explore/flows/2ca9968b-a50d-4910-89e7-e894023d7d21">Онбординг</a></td><td class="why">18 экранов: аккаунт, затем выбор артистов и подкастов.</td></tr>
+      <tr><td>Spotify iOS</td><td><a href="https://mobbin.com/explore/flows/dafca833-7bf4-46e3-97d0-4769403f8f7a">Плейлист</a></td><td class="why">3 экрана детального вида плейлиста.</td></tr>
+      <tr><td>Spotify iOS</td><td><a href="https://mobbin.com/explore/screens/53c8ee32-2e3e-4873-95db-41bb1aaa47eb">Главная</a></td><td class="why">Музыка, подкасты и аудиокниги на одном экране.</td></tr>
+      <tr><td>Spotify Android</td><td><a href="https://mobbin.com/explore/flows/09ffdb99-be67-44aa-acd4-23d2cb42fe5a">Таймер сна</a></td><td class="why">5 экранов, вход из плеера.</td></tr>
+      <tr><td>Spotify Android</td><td><a href="https://mobbin.com/explore/flows/dfc32fae-5701-4b52-97c7-c08e7c3161de">Повтор трека</a></td><td class="why">3 экрана: состояния кнопки повтора.</td></tr>
+      <tr><td>Spotify Android</td><td><a href="https://mobbin.com/explore/flows/2f179c1e-ab97-4839-a24b-bab0eba8aeb7">Настройки</a></td><td class="why">11 экранов: структура разделов настроек.</td></tr>
+      <tr><td>Spotify Web</td><td><a href="https://mobbin.com/explore/flows/14fd94ec-e075-4899-b570-cf20489e46e3">Запуск плейлиста</a></td><td class="why">2 экрана десктопной раскладки.</td></tr>
+      <tr><td>Spotify iOS</td><td><a href="https://mobbin.com/explore/flows/12ddff8c-766e-4762-bceb-6edd93ba57a2">Wrapped</a></td><td class="why">14 экранов итогов года: идея для локальной статистики прослушиваний.</td></tr>
+      <tr><td>Apple Music iOS</td><td><a href="https://mobbin.com/explore/flows/4e537f6f-ea53-4ba8-bf19-f97f66913d14">Запуск трека</a></td><td class="why">5 экранов: с главной в плеер и обратно.</td></tr>
+      <tr><td>Apple Music iOS</td><td><a href="https://mobbin.com/explore/flows/d77c0fcb-e5b4-47aa-b4b9-546a1e4af475">Текст песни</a></td><td class="why">3 экрана: из плеера в текст и прокрутка.</td></tr>
+      <tr><td>Apple Music iOS</td><td><a href="https://mobbin.com/explore/flows/5e8f4062-d75b-41b6-9ed7-cd6192c376a4">Онбординг</a></td><td class="why">14 экранов.</td></tr>
+      <tr><td>YouTube Music iOS</td><td><a href="https://mobbin.com/explore/screens/d9b90824-ac50-4e7a-a306-28f3d2d0b39d">Раскрытый плеер</a></td><td class="why">Управление, прогресс, нижняя шторка с вкладками.</td></tr>
+      <tr><td>YouTube Music iOS</td><td><a href="https://mobbin.com/explore/screens/1d4334dd-1af5-4f4f-b81a-306ed0b01563">Интерфейс плеера</a></td><td class="why">Второй вариант того же экрана.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="lead" style="font-size:15px">Замена Mobbin без подписки: <a href="https://screensdesign.com/explore/screens/playlists/">ScreensDesign</a> хранит полные прохождения Spotify, Apple Music, YouTube Music и Deezer. Яндекс Музыки в найденных подборках Mobbin нет, её экраны проще снять самому с телефона.</p>
+</section>
+
+<section id="tokens">
+  <div class="sec-head">
+    <span class="eyebrow">Раздел 4</span>
+    <h2>Цвет и шрифт: ориентиры</h2>
+    <p>Значения Spotify взяты из сторонних разборов его дизайн-системы Encore, а не из официальной документации. Используйте как отправную точку, а не как копию.</p>
+  </div>
+  <div class="tokens">
+    <div class="tok"><div class="sw" style="background:#121212"></div><div><code>#121212</code><span>Spotify: фон приложения</span></div></div>
+    <div class="tok"><div class="sw" style="background:#181818"></div><div><code>#181818</code><span>Spotify: карточки</span></div></div>
+    <div class="tok"><div class="sw" style="background:#1F1F1F"></div><div><code>#1F1F1F</code><span>Spotify: нажимаемые поверхности</span></div></div>
+    <div class="tok"><div class="sw" style="background:#1ED760"></div><div><code>#1ED760</code><span>Spotify: единственный акцент</span></div></div>
+  </div>
+  <div class="cols">
+    <div class="box">
+      <h3>Что общего у всех</h3>
+      <ul>
+        <li>Не чисто чёрный фон и два-три уровня поверхности чуть светлее.</li>
+        <li>Один акцентный цвет только для Play, лайка и активного состояния.</li>
+        <li>Весь остальной цвет приходит из обложек.</li>
+        <li>Свой шрифт у бренда: у Spotify это Spotify Mix. Фирменный гротеск заметно меняет характер приложения.</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Откуда брать значения</h3>
+      <ul>
+        <li><a href="https://spotify.design/article/ask-spotify-design-07">Spotify Design</a>: как устроена Encore и токены.</li>
+        <li><a href="https://blakecrosley.com/guides/design/spotify">Разбор Spotify</a>: цвет, эмоция, масштаб.</li>
+        <li><a href="https://www.shadcn.io/design/spotify">Spotify DESIGN.md</a>: готовые токены в текстовом виде.</li>
+        <li><a href="https://mobbin.com/colors/brand/soundcloud">Палитра SoundCloud</a> на Mobbin.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="plan">
+  <div class="sec-head">
+    <span class="eyebrow">Раздел 5</span>
+    <h2>Что из этого взять в Hamsterfy</h2>
+    <p>Моя рекомендация для первой версии локального плеера.</p>
+  </div>
+  <div class="cols">
+    <div class="box">
+      <h3>Брать</h3>
+      <ol>
+        <li>Каркас Spotify: три вкладки (Главная, Поиск, Медиатека) и мини-плеер над ними.</li>
+        <li>Кнопку потока по своей коллекции с главной, как «Моя волна по коллекции».</li>
+        <li>Вкладки «Далее / Текст» в плеере, как у YouTube Music.</li>
+        <li>Фон плеера и плейлиста из цвета обложки.</li>
+        <li>Метку формата файла у трека, как метка качества у TIDAL.</li>
+      </ol>
+    </div>
+    <div class="box">
+      <h3>Заменить под локальные файлы</h3>
+      <ul>
+        <li>Онбординг с выбором артистов меняется на выбор папки и прогресс сканирования.</li>
+        <li>Главная строится из недавно добавленного, часто слушаемого и давно забытого.</li>
+        <li>Поиск работает мгновенно и по тегам, жанровые плитки строятся из тегов файлов.</li>
+        <li>Нужны состояния, которых нет у стримингов: файл без обложки, без тегов, файл не найден.</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Не брать</h3>
+      <ul>
+        <li>Подкасты, аудиокниги и видео на главной: перегружают экран.</li>
+        <li>Пейволы и промо-баннеры.</li>
+        <li>Радикальные перестановки привычных кнопок: редизайн Яндекс Музыки получил критику именно за это.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Дополнительно: <a href="https://uxplanet.org/feel-the-beat-ui-design-for-music-streaming-services-7e2232106ecb">UX Planet про интерфейсы стримингов</a>, <a href="https://www.mockplus.com/blog/post/music-app-design">20 дизайнов музыкальных приложений, Mockplus</a>, <a href="https://medium.com/@j.ziolkowska/spotify-reverse-engineering-user-flow-and-wireframe-dcc4577eecb1">юзерфлоу и вайрфреймы Spotify</a>. Схемы экранов на этой странице обобщённые и не воспроизводят конкретные приложения.
+</footer>
+</div>
