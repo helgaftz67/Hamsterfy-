@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'catalog.dart';
 import 'library.dart';
@@ -21,6 +22,8 @@ Future<void> main() async {
     androidNotificationChannelId: 'dev.hamsterfy.audio',
     androidNotificationChannelName: 'Воспроизведение',
     androidNotificationOngoing: true,
+    // White silhouette shown in the status bar while music plays.
+    androidNotificationIcon: 'drawable/ic_stat_music',
   );
   player = Player(library);
   profiles = Profiles(library, player);
@@ -60,6 +63,14 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   int _tab = 0;
   final _keys = List.generate(3, (_) => GlobalKey<NavigatorState>());
+
+  @override
+  void initState() {
+    super.initState();
+    // Android 13+ shows the playback notification and its status-bar icon
+    // only after the user allows notifications.
+    Permission.notification.request();
+  }
 
   @override
   Widget build(BuildContext context) {
