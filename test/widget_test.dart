@@ -149,6 +149,23 @@ void main() {
       expect(copy.cacheLimitMb, 2048);
     });
 
+    test('removing a phone track hides it for good until unhidden', () async {
+      final lib = Library();
+      Map<String, dynamic> row(int id) =>
+          {'id': id, 'title': 'S$id', 'artist': 'A', 'album': '', 'durationMs': 200000, 'path': '/m/$id.mp3'};
+      lib.applyScan([row(1), row(2)]);
+      lib.favorites.add('dev:1');
+      await lib.forget(lib.tracks['dev:1']!);
+      expect(lib.tracks.keys, ['dev:2']);
+      expect(lib.favorites, isEmpty);
+      expect(lib.applyScan([row(1), row(2)]), 0);
+      expect(lib.tracks.keys, ['dev:2']);
+      final copy = Library()..restore(lib.snapshot());
+      expect(copy.hidden, {'dev:1'});
+      copy.unhideAll();
+      expect(copy.applyScan([row(1), row(2)]), 1);
+    });
+
     test('snapshot round-trips favourites and plays', () {
       final lib = seeded();
       lib.favorites.add('t1');

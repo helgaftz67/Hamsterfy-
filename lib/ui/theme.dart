@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../main.dart';
 import '../models.dart';
@@ -24,18 +26,127 @@ ThemeData buildTheme() {
     onSurface: kInk,
     onSurfaceVariant: kMuted,
   );
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: scheme,
+  final base = ThemeData(useMaterial3: true, colorScheme: scheme, fontFamily: 'Manrope');
+  return base.copyWith(
     scaffoldBackgroundColor: kBg,
-    appBarTheme: const AppBarTheme(backgroundColor: kBg, surfaceTintColor: Colors.transparent, centerTitle: false),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: kSurface,
-      indicatorColor: kAccent.withValues(alpha: .22),
-      height: 64,
+    textTheme: base.textTheme.apply(bodyColor: kInk, displayColor: kInk),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: kBg,
+      surfaceTintColor: Colors.transparent,
+      centerTitle: false,
+      titleTextStyle: TextStyle(fontFamily: 'Manrope', fontSize: 20, fontWeight: FontWeight.w700, color: kInk),
     ),
-    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+    // iOS-style slide between screens on every platform.
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    }),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: kBg,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: Colors.transparent,
+      height: 60,
+      labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
+            fontFamily: 'Manrope',
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: states.contains(WidgetState.selected) ? kInk : kMuted,
+          )),
+      iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(size: 26, color: states.contains(WidgetState.selected) ? kInk : kMuted)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: kInk,
+        foregroundColor: kBg,
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+        textStyle: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 15),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: kInk,
+        side: BorderSide(color: kInk.withValues(alpha: .28)),
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        textStyle: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 15),
+      ),
+    ),
+    chipTheme: base.chipTheme.copyWith(
+      backgroundColor: kSurface,
+      selectedColor: kInk,
+      side: BorderSide.none,
+      shape: const StadiumBorder(),
+      showCheckmark: false,
+      labelStyle: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w600, fontSize: 13.5),
+      secondaryLabelStyle: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, color: kBg),
+    ),
+    listTileTheme: const ListTileThemeData(
+      subtitleTextStyle: TextStyle(fontFamily: 'Manrope', color: kMuted, fontSize: 13),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: kSurface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: kInk,
+      contentTextStyle: const TextStyle(fontFamily: 'Manrope', color: kBg, fontWeight: FontWeight.w600),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
   );
+}
+
+/// Large screen title used at the top of every tab.
+const kTitle = TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.6, height: 1.1);
+
+ImageProvider? artProvider(String? art) {
+  if (art == null) return null;
+  return art.startsWith('http') ? NetworkImage(art) : FileImage(File(art)) as ImageProvider;
+}
+
+Color seedColor(String seed) => HSLColor.fromAHSL(1, (seed.hashCode % 360).abs().toDouble(), .42, .30).toColor();
+
+final Map<String, Color> _artColors = {};
+
+/// A deep colour taken from the artwork, for backgrounds behind white text.
+/// Falls back to a colour derived from [seed] when there is no artwork.
+Future<Color> artColor(String? art, String seed) async {
+  final provider = artProvider(art);
+  if (provider == null) return seedColor(seed);
+  final known = _artColors[art!];
+  if (known != null) return known;
+  try {
+    final scheme = await ColorScheme.fromImageProvider(provider: provider, brightness: Brightness.dark);
+    final hsl = HSLColor.fromColor(scheme.primary);
+    final color = hsl.withSaturation((hsl.saturation * .9).clamp(.25, .7)).withLightness(.30).toColor();
+    return _artColors[art] = color;
+  } catch (_) {
+    return seedColor(seed);
+  }
+}
+
+/// Rebuilds with the artwork colour, animating from the seed colour.
+class ArtColorBuilder extends StatelessWidget {
+  const ArtColorBuilder({super.key, required this.art, required this.seed, required this.builder});
+  final String? art;
+  final String seed;
+  final Widget Function(BuildContext, Color) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Color>(
+      key: ValueKey('$art|$seed'),
+      future: artColor(art, seed),
+      initialData: _artColors[art] ?? seedColor(seed),
+      builder: (context, snap) => TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: snap.data),
+        duration: const Duration(milliseconds: 500),
+        builder: (context, color, _) => builder(context, color ?? snap.data!),
+      ),
+    );
+  }
 }
 
 String formatDuration(Duration d) {
@@ -51,29 +162,54 @@ void toast(BuildContext context, String text) {
 
 /// Square cover with a coloured placeholder when a track has no artwork.
 class Cover extends StatelessWidget {
-  const Cover(this.art, {super.key, this.size = 48, this.radius = 8, this.seed = ''});
+  const Cover(this.art, {super.key, this.size = 48, this.radius = 8, this.seed = '', this.shadow = false});
   final String? art;
   final double size;
   final double radius;
   final String seed;
+  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
-    final hue = (seed.hashCode % 360).abs().toDouble();
+    final base = seedColor(seed);
     final placeholder = Container(
       width: size,
       height: size,
-      color: HSLColor.fromAHSL(1, hue, .35, .28).toColor(),
-      child: Icon(Icons.music_note, size: size * .45, color: Colors.white70),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [HSLColor.fromColor(base).withLightness(.42).toColor(), HSLColor.fromColor(base).withLightness(.20).toColor()],
+        ),
+      ),
+      child: Icon(Icons.music_note_rounded, size: size * .42, color: Colors.white.withValues(alpha: .75)),
     );
-    final a = art;
-    Widget child = placeholder;
-    if (a != null) {
-      child = a.startsWith('http')
-          ? Image.network(a, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder)
-          : Image.file(File(a), width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder);
-    }
-    return ClipRRect(borderRadius: BorderRadius.circular(radius), child: child);
+    final provider = artProvider(art);
+    final image = provider == null
+        ? placeholder
+        : Image(
+            image: provider,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => placeholder,
+            frameBuilder: (_, child, frame, sync) => sync
+                ? child
+                : Stack(children: [
+                    placeholder,
+                    AnimatedOpacity(
+                        opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 250), child: child),
+                  ]),
+          );
+    final clipped = ClipRRect(borderRadius: BorderRadius.circular(radius), child: image);
+    if (!shadow) return clipped;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .45), blurRadius: size * .16, offset: Offset(0, size * .07))],
+      ),
+      child: clipped,
+    );
   }
 }
 
@@ -98,11 +234,11 @@ class TrackTile extends StatelessWidget {
         return ListTile(
           onTap: onTap,
           contentPadding: const EdgeInsets.only(left: 16, right: 4),
-          leading: Cover(t.art, seed: t.album + t.artist),
+          leading: Cover(t.art, size: 50, radius: 6, seed: t.album + t.artist),
           title: Text(t.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: isCurrent ? kAccent : kInk, fontWeight: FontWeight.w500)),
+              style: TextStyle(color: isCurrent ? kAccent : kInk, fontWeight: FontWeight.w600, fontSize: 15.5)),
           subtitle: Row(
             children: [
               if (t.isRadio) ...[
@@ -131,6 +267,7 @@ class TrackTile extends StatelessWidget {
                 onSelected: (v) async {
                   switch (v) {
                     case 'fav':
+                      HapticFeedback.lightImpact();
                       library.toggleFavorite(t);
                     case 'download':
                       try {
@@ -141,6 +278,11 @@ class TrackTile extends StatelessWidget {
                       }
                     case 'remove':
                       await library.remove(t);
+                    case 'forget':
+                      await library.forget(t);
+                      if (context.mounted) {
+                        toast(context, t.isDevice ? 'Убрано из медиатеки. Файл остался на телефоне' : 'Убрано из медиатеки');
+                      }
                     case 'pin':
                       library.pin(t);
                       if (context.mounted) toast(context, 'Трек сохранён и не будет удалён при очистке кэша');
@@ -157,8 +299,10 @@ class TrackTile extends StatelessWidget {
                   if (!t.isLocal && !t.isRadio && t.url != null && progress == null)
                     const PopupMenuItem(value: 'download', child: Text('Скачать')),
                   if (t.isLocal && t.auto) const PopupMenuItem(value: 'pin', child: Text('Сохранить навсегда')),
-                  if (t.isLocal && !t.isDevice)
-                    const PopupMenuItem(value: 'remove', child: Text('Удалить с устройства')),
+                  if (t.isLocal && t.url != null)
+                    const PopupMenuItem(value: 'remove', child: Text('Удалить скачанный файл')),
+                  if (library.tracks.containsKey(t.id))
+                    const PopupMenuItem(value: 'forget', child: Text('Убрать из медиатеки')),
                 ],
               ),
             ],

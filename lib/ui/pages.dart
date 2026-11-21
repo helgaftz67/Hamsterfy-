@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../library.dart';
 import '../main.dart';
@@ -48,15 +51,27 @@ class _HomePageState extends State<HomePage> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => TrackListPage(title: title, tracks: () => tracks)));
   }
 
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 5) return 'Доброй ночи';
+    if (h < 12) return 'Доброе утро';
+    if (h < 18) return 'Добрый день';
+    return 'Добрый вечер';
+  }
+
+  void _push(Widget page) => Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
+        bottom: false,
         child: ListenableBuilder(
-          listenable: library,
+          listenable: Listenable.merge([library, profiles]),
           builder: (context, _) {
-            final empty = library.tracks.isEmpty;
+            final empty = library.all.where((t) => !t.isRadio).isEmpty;
             final top = library.mostPlayed;
+            final me = profiles.current;
             return RefreshIndicator(
               onRefresh: () async {
                 _loadForYou();
@@ -66,17 +81,23 @@ class _HomePageState extends State<HomePage> {
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 12, 8),
+                    padding: const EdgeInsets.fromLTRB(20, 18, 12, 14),
                     child: Row(
                       children: [
-                        const Expanded(
-                          child: Text('Hamsterfy', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_greeting, style: const TextStyle(color: kMuted, fontWeight: FontWeight.w600)),
+                              Text(me?.name ?? 'Hamsterfy', maxLines: 1, overflow: TextOverflow.ellipsis, style: kTitle),
+                            ],
+                          ),
                         ),
-                        if (profiles.current != null)
+                        if (me != null)
                           IconButton(
-                            tooltip: 'Аккаунт',
-                            onPressed: () => showAccountSheet(context),
-                            icon: ProfileAvatar(profiles.current!),
+                            tooltip: 'Профиль',
+                            onPressed: () => _push(const ProfilePage()),
+                            icon: ProfileAvatar(me, size: 42),
                           ),
                       ],
                     ),
@@ -84,53 +105,53 @@ class _HomePageState extends State<HomePage> {
                   _Wave(enabled: !empty),
                   if (empty)
                     const Padding(
-                      padding: EdgeInsets.fromLTRB(24, 4, 24, 16),
+                      padding: EdgeInsets.fromLTRB(24, 14, 24, 4),
                       child: Text(
-                        'Волна собирается из вашей коллекции. Откройте Медиатеку и найдите музыку на телефоне или включите радио ниже.',
+                        'Волна собирается из вашей коллекции. Откройте Медиатеку и найдите музыку на телефоне.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: kMuted),
                       ),
-                    )
-                  else
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      child: Row(
-                        children: [
-                          _Quick(
-                              icon: Icons.favorite,
-                              label: 'Избранное',
-                              count: library.favorites.length,
-                              onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) =>
-                                          TrackListPage(title: 'Избранное', tracks: () => library.favoriteTracks)))),
-                          const SizedBox(width: 10),
-                          _Quick(
-                              icon: Icons.download_done,
-                              label: 'Скачанное',
-                              count: library.downloaded.length,
-                              onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) =>
-                                          TrackListPage(title: 'Скачанное', tracks: () => library.downloaded)))),
-                        ],
-                      ),
                     ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
-                    child: Material(
-                      color: kSurface,
-                      borderRadius: BorderRadius.circular(12),
-                      child: ListTile(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        leading: const Icon(Icons.sensors, color: kAmber),
-                        title: const Text('Радио', style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: const Text('Живой эфир без файлов'),
-                        trailing: const Icon(Icons.chevron_right, color: kMuted),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RadioPage())),
-                      ),
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            _Quick(
+                                icon: Icons.favorite_rounded,
+                                tint: kAccent,
+                                label: 'Избранное',
+                                onTap: () =>
+                                    _push(TrackListPage(title: 'Избранное', tracks: () => library.favoriteTracks))),
+                            const SizedBox(width: 8),
+                            _Quick(
+                                icon: Icons.sensors_rounded,
+                                tint: kAmber,
+                                label: 'Радио',
+                                onTap: () => _push(const RadioPage())),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            _Quick(
+                                icon: Icons.download_done_rounded,
+                                tint: const Color(0xFF5ED4A8),
+                                label: 'На устройстве',
+                                onTap: () =>
+                                    _push(TrackListPage(title: 'На устройстве', tracks: () => library.downloaded))),
+                            const SizedBox(width: 8),
+                            _Quick(
+                                icon: Icons.shuffle_rounded,
+                                tint: const Color(0xFFFF8FB1),
+                                label: 'Вперемешку',
+                                onTap: empty
+                                    ? null
+                                    : () => player.playAll(library.all.where((t) => !t.isRadio).toList()..shuffle())),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   if (top.isNotEmpty) ...[
@@ -152,7 +173,7 @@ class _HomePageState extends State<HomePage> {
                       }
                       if (snap.hasError || (snap.data ?? const []).isEmpty) {
                         return Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                          padding: const EdgeInsets.fromLTRB(20, 24, 12, 0),
                           child: Row(
                             children: [
                               const Expanded(
@@ -180,7 +201,8 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// The big "My wave" button: one tap starts a personal mix.
+/// The "My wave" hero: a card of slowly drifting colour that starts a
+/// personal mix with one tap.
 class _Wave extends StatefulWidget {
   const _Wave({required this.enabled});
   final bool enabled;
@@ -190,7 +212,7 @@ class _Wave extends StatefulWidget {
 }
 
 class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
-  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+  late final _drift = AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat();
   bool _waveOn = false;
 
   @override
@@ -200,20 +222,18 @@ class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
   }
 
   void _sync() {
-    final active = _waveOn && player.playing;
-    if (active && !_pulse.isAnimating) _pulse.repeat(reverse: true);
-    if (!active && _pulse.isAnimating) _pulse.stop();
     if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     player.removeListener(_sync);
-    _pulse.dispose();
+    _drift.dispose();
     super.dispose();
   }
 
   void _tap() {
+    HapticFeedback.mediumImpact();
     if (_waveOn && player.current != null) {
       player.toggle();
       return;
@@ -226,38 +246,63 @@ class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final active = _waveOn && player.playing;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Center(
-        child: Semantics(
-          button: true,
-          label: active ? 'Поставить волну на паузу' : 'Запустить мою волну',
-          child: GestureDetector(
-            onTap: widget.enabled ? _tap : null,
-            child: AnimatedBuilder(
-              animation: _pulse,
-              builder: (context, child) => Transform.scale(scale: 1 + _pulse.value * .06, child: child),
-              child: Opacity(
-                opacity: widget.enabled ? 1 : .45,
-                child: Container(
-                  width: 190,
-                  height: 190,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const SweepGradient(colors: [kAccent, Color(0xFF6C4CF0), kAmber, kAccent]),
-                    boxShadow: [BoxShadow(color: kAccent.withValues(alpha: .35), blurRadius: 40, spreadRadius: 2)],
-                  ),
-                  child: Container(
-                    margin: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(shape: BoxShape.circle, color: kSurface),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(active ? Icons.pause : Icons.play_arrow, size: 44, color: kInk),
-                        const SizedBox(height: 4),
-                        const Text('Моя волна', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                      ],
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Semantics(
+        button: true,
+        label: active ? 'Поставить волну на паузу' : 'Запустить мою волну',
+        child: Opacity(
+          opacity: widget.enabled ? 1 : .5,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: GestureDetector(
+              onTap: widget.enabled ? _tap : null,
+              child: SizedBox(
+                height: 208,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: _drift,
+                        builder: (_, _) => CustomPaint(painter: _WavePainter(_drift.value, active ? 1.0 : .55)),
+                      ),
                     ),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.all(22),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(active ? 'ИГРАЕТ' : 'ДЛЯ ВАС',
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: .8),
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.6)),
+                          const SizedBox(height: 4),
+                          const Text('Моя волна',
+                              style: TextStyle(
+                                  color: Colors.white, fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -1)),
+                          const SizedBox(height: 2),
+                          Text('Бесконечный микс из вашей коллекции',
+                              style: TextStyle(color: Colors.white.withValues(alpha: .82), fontWeight: FontWeight.w500)),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(14, 10, 20, 10),
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(active ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.black, size: 26),
+                                const SizedBox(width: 6),
+                                Text(active ? 'Пауза' : 'Слушать',
+                                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 15)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -268,34 +313,79 @@ class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
   }
 }
 
+/// Soft blobs of colour drifting over a deep violet ground.
+class _WavePainter extends CustomPainter {
+  _WavePainter(this.t, this.energy);
+  final double t;
+  final double energy;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF2B1D6E));
+    const colors = [Color(0xFF8E6BFF), Color(0xFFFF7EB6), Color(0xFFFFB938), Color(0xFF4AC7FF)];
+    for (var i = 0; i < colors.length; i++) {
+      final a = (t + i / colors.length) * 2 * math.pi;
+      final center = Offset(
+        size.width * (.5 + .42 * math.cos(a + i * 1.3)),
+        size.height * (.5 + .46 * math.sin(a * (i.isEven ? 1 : -1) + i)),
+      );
+      final radius = size.width * (.34 + .08 * math.sin(a * 2 + i)) * (.85 + .3 * energy);
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..color = colors[i].withValues(alpha: .50 + .25 * energy)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * .14),
+      );
+    }
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0x55000000), Color(0x00000000)],
+        ).createShader(Offset.zero & size),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_WavePainter old) => old.t != t || old.energy != energy;
+}
+
+/// Compact shortcut tile, two per row.
 class _Quick extends StatelessWidget {
-  const _Quick({required this.icon, required this.label, required this.count, required this.onTap});
+  const _Quick({required this.icon, required this.tint, required this.label, required this.onTap});
   final IconData icon;
+  final Color tint;
   final String label;
-  final int count;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Material(
         color: kSurface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                Icon(icon, color: kAccent),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                ),
-                Text('$count', style: const TextStyle(color: kMuted)),
-              ],
-            ),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                color: tint.withValues(alpha: .20),
+                child: Icon(icon, color: tint, size: 26),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              ),
+            ],
           ),
         ),
       ),
@@ -311,14 +401,14 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 8, 8),
+      padding: const EdgeInsets.fromLTRB(20, 28, 8, 10),
       child: Row(
         children: [
           Expanded(
             child: Text(text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, letterSpacing: -.3)),
           ),
           if (onMore != null) TextButton(onPressed: onMore, child: const Text('Все')),
         ],
@@ -334,12 +424,12 @@ class _TrackShelf extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 182,
+      height: 204,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: tracks.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 14),
         itemBuilder: (context, i) {
           final t = tracks[i];
           return _ShelfCard(
@@ -362,12 +452,12 @@ class _AlbumShelf extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 182,
+      height: 204,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: albums.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 14),
         itemBuilder: (context, i) {
           final a = albums[i];
           return _ShelfCard(
@@ -394,16 +484,16 @@ class _ShelfCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 128,
+      width: 148,
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Cover(art, size: 128, radius: 10, seed: seed),
+            Cover(art, size: 148, radius: 12, seed: seed),
             const SizedBox(height: 8),
-            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
             Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kMuted, fontSize: 12.5)),
           ],
         ),
@@ -442,7 +532,7 @@ class _CatalogPageState extends State<CatalogPage> {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 20, 16, 4),
-              child: Text('Каталог', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+              child: Text('Каталог', style: kTitle),
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
@@ -675,11 +765,11 @@ class _AlbumPageState extends State<AlbumPage> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: Column(
                     children: [
-                      Cover(a.art, size: 180, radius: 14, seed: a.id),
+                      Cover(a.art, size: 210, radius: 14, seed: a.id, shadow: true),
                       const SizedBox(height: 14),
                       Text(a.title,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -.4)),
                       const SizedBox(height: 2),
                       Text(a.artist, textAlign: TextAlign.center, style: const TextStyle(color: kMuted)),
                       const SizedBox(height: 14),
@@ -789,7 +879,7 @@ class _LibraryPageState extends State<LibraryPage> {
                   child: Row(
                     children: [
                       const Expanded(
-                        child: Text('Медиатека', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                        child: Text('Медиатека', style: kTitle),
                       ),
                       if (_busy)
                         const Padding(

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -11,19 +12,22 @@ import 'player.dart';
 /// A local account. Each one has its own collection, favourites, history
 /// and downloads. Nothing leaves the device.
 class Profile {
-  Profile({required this.id, required this.name, this.pinHash});
+  Profile({required this.id, required this.name, this.pinHash, this.avatar});
   final String id;
   final String name;
 
   /// SHA-256 of the id and PIN, or null when the profile has no PIN.
   final String? pinHash;
 
+  /// Path of the profile picture inside the app's storage, if one is set.
+  String? avatar;
+
   bool get hasPin => pinHash != null;
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'pinHash': pinHash};
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'pinHash': pinHash, 'avatar': avatar};
 
   factory Profile.fromJson(Map<String, dynamic> j) =>
-      Profile(id: j['id'] as String, name: j['name'] as String, pinHash: j['pinHash'] as String?);
+      Profile(id: j['id'] as String, name: j['name'] as String, pinHash: j['pinHash'] as String?, avatar: j['avatar'] as String?);
 }
 
 class Profiles extends ChangeNotifier {
@@ -77,6 +81,36 @@ class Profiles extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Lets the user pick a picture and makes it the avatar of [p].
+  /// Returns false when nothing was picked.
+  Future<bool> pickAvatar(Profile p) async {
+    final picked = await FilePicker.pickFile(type: FileType.image);
+    if (picked == null) return false;
+    // A new file name each time, so the old picture is not served from cache.
+    final ext = (picked.extension ?? 'jpg').toLowerCase();
+    final dest = File('${_dir.path}/avatar_${p.id}_${DateTime.now().millisecondsSinceEpoch}.$ext');
+    final sink = dest.openWrite();
+    await sink.addStream(picked.xFile.openRead());
+    await sink.close();
+    await _dropAvatar(p);
+    p.avatar = dest.path;
+    await _save();
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> removeAvatar(Profile p) async {
+    await _dropAvatar(p);
+    p.avatar = null;
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> _dropAvatar(Profile p) async {
+    final old = p.avatar;
+    if (old != null && await File(old).exists()) await File(old).delete();
+  }
+
   /// Returns to the "who is listening" screen.
   Future<void> signOut() async {
     await player.reset();
@@ -88,6 +122,7 @@ class Profiles extends ChangeNotifier {
   Future<void> delete(Profile p) async {
     if (current?.id == p.id) await signOut();
     list.removeWhere((x) => x.id == p.id);
+    await _dropAvatar(p);
     await _save();
     final lib = File('${_dir.path}/${Library.libraryFileName(p.id)}');
     final music = Directory('${_dir.path}/${Library.musicDirName(p.id)}');

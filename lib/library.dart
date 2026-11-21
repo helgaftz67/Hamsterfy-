@@ -21,6 +21,10 @@ class Library extends ChangeNotifier {
   final Map<String, int> plays = {};
   final Map<String, int> lastPlayed = {};
 
+  /// Ids of phone tracks the user removed from the library. The files stay
+  /// on the phone; the scan just stops bringing them back.
+  final Set<String> hidden = {};
+
   /// Playlists by name, each an ordered list of track ids.
   final Map<String, List<String>> playlists = {};
 
@@ -63,6 +67,7 @@ class Library extends ChangeNotifier {
     plays.clear();
     lastPlayed.clear();
     playlists.clear();
+    hidden.clear();
     autoCache = true;
     cacheLimitMb = 2048;
     downloading.clear();
@@ -88,6 +93,7 @@ class Library extends ChangeNotifier {
     favorites.addAll((j['favorites'] as List? ?? const []).cast<String>());
     plays.addAll((j['plays'] as Map? ?? const {}).cast<String, int>());
     lastPlayed.addAll((j['lastPlayed'] as Map? ?? const {}).cast<String, int>());
+    hidden.addAll((j['hidden'] as List? ?? const []).cast<String>());
     autoCache = j['autoCache'] as bool? ?? true;
     cacheLimitMb = j['cacheLimitMb'] as int? ?? 2048;
     (j['playlists'] as Map? ?? const {}).forEach((name, ids) {
@@ -101,6 +107,7 @@ class Library extends ChangeNotifier {
         'plays': plays,
         'lastPlayed': lastPlayed,
         'playlists': playlists,
+        'hidden': hidden.toList(),
         'autoCache': autoCache,
         'cacheLimitMb': cacheLimitMb,
       };
@@ -227,7 +234,7 @@ class Library extends ChangeNotifier {
       if (path == null || (r['durationMs'] as int? ?? 0) < 30000) continue;
       final id = 'dev:${r['id']}';
       seen.add(id);
-      if (tracks.containsKey(id)) continue;
+      if (tracks.containsKey(id) || hidden.contains(id)) continue;
       final artist = (r['artist'] as String? ?? '').trim();
       final title = (r['title'] as String? ?? '').trim();
       tracks[id] = Track(
@@ -359,6 +366,34 @@ class Library extends ChangeNotifier {
     }
     _changed();
   }
+
+  /// Takes a track out of the library without touching the user's own
+  /// files: phone tracks are only hidden, streams are simply forgotten.
+  /// Copies the app made itself (imports, downloads) are deleted.
+  Future<void> forget(Track t) async {
+    if (t.isDevice) {
+      hidden.add(t.id);
+    } else if (t.path != null) {
+      for (final p in [t.path!, '${t.path}.cover']) {
+        final f = File(p);
+        if (await f.exists()) await f.delete();
+      }
+    }
+    tracks.remove(t.id);
+    favorites.remove(t.id);
+    for (final ids in playlists.values) {
+      ids.remove(t.id);
+    }
+    _changed();
+  }
+
+  /// Brings hidden phone tracks back on the next scan.
+  void unhideAll() {
+    hidden.clear();
+    _changed();
+  }
+
+  int get totalPlays => plays.values.fold(0, (a, b) => a + b);
 
   static String _safe(String s) => s.replaceAll(RegExp(r'[^\w.\-]+', unicode: true), '_');
 

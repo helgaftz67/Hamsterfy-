@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -14,13 +16,29 @@ class ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: size / 2,
-      backgroundColor: profileColor(profile),
+    final picture = profile.avatar;
+    final color = profileColor(profile);
+    final letter = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [color, HSLColor.fromColor(color).withLightness(.38).toColor()],
+        ),
+      ),
       child: Text(
         profile.name.isEmpty ? '?' : profile.name.characters.first.toUpperCase(),
-        style: TextStyle(color: kBg, fontWeight: FontWeight.w800, fontSize: size * .45),
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * .44),
       ),
+    );
+    return ClipOval(
+      child: picture == null
+          ? letter
+          : Image.file(File(picture),
+              width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, _, _) => letter),
     );
   }
 }
@@ -48,7 +66,7 @@ class ProfileGate extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
               children: [
-                const Text('Кто слушает?', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                const Text('Кто слушает?', style: kTitle),
                 const SizedBox(height: 6),
                 const Text('У каждого аккаунта своя медиатека, избранное и рекомендации.',
                     style: TextStyle(color: kMuted)),
@@ -125,8 +143,17 @@ class _CreateFormState extends State<_CreateForm> {
       child: ListView(
         padding: EdgeInsets.fromLTRB(24, widget.first ? 48 : 8, 24, 24),
         children: [
-          Text(widget.first ? 'Добро пожаловать в Hamsterfy' : 'Новый аккаунт',
-              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+          if (widget.first) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Image.asset('assets/brand/icon.png', width: 96, height: 96),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+          Text(widget.first ? 'Добро пожаловать в Hamsterfy' : 'Новый аккаунт', style: kTitle),
           const SizedBox(height: 6),
           const Text('Аккаунт хранится только на этом телефоне. Почта и интернет не нужны.',
               style: TextStyle(color: kMuted)),
@@ -221,65 +248,196 @@ class _PinDialogState extends State<_PinDialog> {
   }
 }
 
-/// Account sheet opened from the avatar on the home screen.
-void showAccountSheet(BuildContext context) {
-  final p = profiles.current!;
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: kSurface,
-    showDragHandle: true,
-    builder: (sheet) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: ProfileAvatar(p, size: 44),
-            title: Text(p.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            subtitle: Text('Треков: ${library.tracks.length} · в избранном: ${library.favorites.length}'),
-          ),
-          const Divider(height: 8),
-          ListTile(
-            leading: const Icon(Icons.cached),
-            title: const Text('Кэш музыки'),
-            subtitle: Text(library.autoCache
-                ? 'Занято ${formatSize(library.cacheBytes)} из ${formatSize(library.cacheLimitMb * 1024 * 1024)}'
-                : 'Выключен'),
-            onTap: () {
-              Navigator.pop(sheet);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const CachePage()));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.switch_account_outlined),
-            title: const Text('Сменить аккаунт'),
-            onTap: () {
-              Navigator.pop(sheet);
-              profiles.signOut();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete_outline, color: kAmber),
-            title: const Text('Удалить аккаунт'),
-            onTap: () async {
-              Navigator.pop(sheet);
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (d) => AlertDialog(
-                  title: Text('Удалить аккаунт «${p.name}»?'),
-                  content: const Text('Медиатека, избранное и скачанные треки этого аккаунта удалятся с телефона. Вернуть их нельзя.'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
-                    FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Удалить')),
+/// The user's own page: picture, listening numbers and account actions.
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({super.key});
+
+  Future<void> _changePicture(BuildContext context, Profile p) async {
+    final action = p.avatar == null
+        ? 'pick'
+        : await showModalBottomSheet<String>(
+            context: context,
+            backgroundColor: kSurface,
+            showDragHandle: true,
+            builder: (sheet) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                      leading: const Icon(Icons.image_outlined),
+                      title: const Text('Выбрать другое фото'),
+                      onTap: () => Navigator.pop(sheet, 'pick')),
+                  ListTile(
+                      leading: const Icon(Icons.delete_outline),
+                      title: const Text('Убрать фото'),
+                      onTap: () => Navigator.pop(sheet, 'remove')),
+                ],
+              ),
+            ),
+          );
+    try {
+      if (action == 'pick') await profiles.pickAvatar(p);
+      if (action == 'remove') await profiles.removeAvatar(p);
+    } catch (_) {
+      if (context.mounted) toast(context, 'Не удалось поставить фото. Попробуйте выбрать другое.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(),
+      body: ListenableBuilder(
+        listenable: Listenable.merge([profiles, library]),
+        builder: (context, _) {
+          final p = profiles.current;
+          if (p == null) return const SizedBox.shrink();
+          final tracks = library.tracks.values.where((t) => !t.isRadio).length;
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+            children: [
+              Center(
+                child: Semantics(
+                  button: true,
+                  label: 'Изменить фото профиля',
+                  child: GestureDetector(
+                    onTap: () => _changePicture(context, p),
+                    child: Stack(
+                      children: [
+                        ProfileAvatar(p, size: 132),
+                        Positioned(
+                          right: 2,
+                          bottom: 2,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: kInk,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: kBg, width: 3),
+                            ),
+                            child: const Icon(Icons.photo_camera_rounded, size: 18, color: kBg),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(p.name, textAlign: TextAlign.center, style: kTitle),
+              const SizedBox(height: 22),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(18)),
+                child: Row(
+                  children: [
+                    _Stat('$tracks', 'треков'),
+                    _Stat('${library.favorites.length}', 'в избранном'),
+                    _Stat('${library.playlists.length}', 'плейлистов'),
+                    _Stat('${library.totalPlays}', 'прослушиваний'),
                   ],
                 ),
-              );
-              if (ok == true) await profiles.delete(p);
-            },
-          ),
+              ),
+              const SizedBox(height: 18),
+              _Row(
+                icon: Icons.cached_rounded,
+                title: 'Кэш музыки',
+                subtitle: library.autoCache
+                    ? 'Занято ${formatSize(library.cacheBytes)} из ${formatSize(library.cacheLimitMb * 1024 * 1024)}'
+                    : 'Выключен',
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CachePage())),
+              ),
+              if (library.hidden.isNotEmpty)
+                _Row(
+                  icon: Icons.visibility_off_outlined,
+                  title: 'Скрытые треки: ${library.hidden.length}',
+                  subtitle: 'Вернуть в медиатеку всё, что вы из неё убрали',
+                  onTap: () async {
+                    library.unhideAll();
+                    final n = await library.scanDevice(ask: false);
+                    if (context.mounted) toast(context, n > 0 ? 'Возвращено треков: $n' : 'Скрытые треки вернутся при следующем поиске музыки');
+                  },
+                ),
+              _Row(
+                icon: Icons.switch_account_outlined,
+                title: 'Сменить аккаунт',
+                onTap: () {
+                  Navigator.pop(context);
+                  profiles.signOut();
+                },
+              ),
+              _Row(
+                icon: Icons.delete_outline_rounded,
+                title: 'Удалить аккаунт',
+                danger: true,
+                onTap: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (d) => AlertDialog(
+                      title: Text('Удалить аккаунт «${p.name}»?'),
+                      content: const Text(
+                          'Медиатека, избранное и скачанные треки этого аккаунта удалятся из приложения. Вернуть их нельзя. Ваши файлы в памяти телефона останутся.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+                        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Удалить')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    if (context.mounted) Navigator.pop(context);
+                    await profiles.delete(p);
+                  }
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat(this.value, this.label);
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+          const SizedBox(height: 2),
+          Text(label, textAlign: TextAlign.center, style: const TextStyle(color: kMuted, fontSize: 11.5)),
         ],
       ),
-    ),
-  );
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
+  const _Row({required this.icon, required this.title, this.subtitle, required this.onTap, this.danger = false});
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? const Color(0xFFFF7A8A) : kInk;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      leading: Icon(icon, color: color),
+      title: Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+      subtitle: subtitle == null ? null : Text(subtitle!),
+      trailing: danger ? null : const Icon(Icons.chevron_right_rounded, color: kMuted),
+      onTap: onTap,
+    );
+  }
 }
 
 String formatSize(int bytes) {
