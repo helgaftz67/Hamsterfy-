@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../main.dart';
 import '../profiles.dart';
 import 'aurora.dart';
+import 'hamsters.dart';
 import 'theme.dart';
 
 Color profileColor(Profile p) => HSLColor.fromAHSL(1, (p.name.hashCode % 360).abs().toDouble(), .5, .55).toColor();
@@ -84,7 +85,7 @@ class ProfileGate extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Expanded(flex: 5, child: Center(child: _Mascot(size: 190))),
+          const Expanded(flex: 6, child: HamsterScene()),
           const Text('Музыка,\nкоторая ваша',
               style: TextStyle(fontSize: 44, height: 1.02, fontWeight: FontWeight.w800, letterSpacing: -1.6)),
           const SizedBox(height: 14),
