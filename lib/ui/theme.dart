@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../main.dart';
 import '../models.dart';
@@ -215,12 +216,16 @@ class Cover extends StatelessWidget {
 
 /// One row in any track list: cover, title, artist, state and a menu.
 class TrackTile extends StatelessWidget {
-  const TrackTile(this.track, {super.key, required this.onTap, this.playlist});
+  const TrackTile(this.track, {super.key, required this.onTap, this.playlist, this.selected, this.onLongPress});
   final Track track;
   final VoidCallback onTap;
 
   /// Set when the row is shown inside a playlist, to offer removal from it.
   final String? playlist;
+
+  /// Non-null while the list is in selection mode: whether this row is ticked.
+  final bool? selected;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -233,15 +238,35 @@ class TrackTile extends StatelessWidget {
         final fav = library.isFavorite(t);
         return ListTile(
           onTap: onTap,
-          contentPadding: const EdgeInsets.only(left: 16, right: 4),
-          leading: Cover(t.art, size: 50, radius: 6, seed: t.album + t.artist),
+          onLongPress: onLongPress,
+          selected: selected ?? false,
+          selectedTileColor: kAccent.withValues(alpha: .10),
+          contentPadding: EdgeInsets.only(left: 16, right: selected == null ? 4 : 16),
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected != null) ...[
+                Icon(selected! ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    color: selected! ? kAccent : kMuted, semanticLabel: selected! ? 'Выбрано' : 'Не выбрано'),
+                const SizedBox(width: 12),
+              ],
+              Cover(t.art, size: 50, radius: 6, seed: t.album + t.artist),
+            ],
+          ),
           title: Text(t.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: isCurrent ? kAccent : kInk, fontWeight: FontWeight.w600, fontSize: 15.5)),
           subtitle: Row(
             children: [
-              if (t.isRadio) ...[
+              if (t.isPreview) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(color: kSunken, borderRadius: BorderRadius.circular(4)),
+                  child: const Text('30 сек', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: kAmber)),
+                ),
+              ] else if (t.isRadio) ...[
                 const Icon(Icons.sensors, size: 14, color: kAmber),
                 const SizedBox(width: 4),
               ] else if (t.isLocal) ...[
@@ -251,7 +276,9 @@ class TrackTile extends StatelessWidget {
               Expanded(child: Text(t.artist, maxLines: 1, overflow: TextOverflow.ellipsis)),
             ],
           ),
-          trailing: Row(
+          trailing: selected != null
+              ? null
+              : Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (progress != null)
@@ -278,6 +305,8 @@ class TrackTile extends StatelessWidget {
                       }
                     case 'remove':
                       await library.remove(t);
+                    case 'open':
+                      await openLink(context, t.link!);
                     case 'forget':
                       await library.forget(t);
                       if (context.mounted) {
@@ -294,9 +323,10 @@ class TrackTile extends StatelessWidget {
                 },
                 itemBuilder: (_) => [
                   PopupMenuItem(value: 'fav', child: Text(fav ? 'Убрать из избранного' : 'В избранное')),
+                  if (t.link != null) const PopupMenuItem(value: 'open', child: Text('Слушать целиком в Apple Music')),
                   const PopupMenuItem(value: 'playlist', child: Text('Добавить в плейлист')),
                   if (playlist != null) const PopupMenuItem(value: 'unlist', child: Text('Убрать из плейлиста')),
-                  if (!t.isLocal && !t.isRadio && t.url != null && progress == null)
+                  if (!t.isLocal && !t.isRadio && !t.isPreview && t.url != null && progress == null)
                     const PopupMenuItem(value: 'download', child: Text('Скачать')),
                   if (t.isLocal && t.auto) const PopupMenuItem(value: 'pin', child: Text('Сохранить навсегда')),
                   if (t.isLocal && t.url != null)
@@ -382,4 +412,13 @@ Future<void> addToPlaylistDialog(BuildContext context, Track t) async {
   final name = choice == '\u0000new' ? await newPlaylistDialog(context) : choice;
   if (name == null || !context.mounted) return;
   toast(context, library.addToPlaylist(name, t) ? 'Добавлено в «$name»' : 'Этот трек уже есть в «$name»');
+}
+
+/// Opens a web page or the matching app outside Hamsterfy.
+Future<void> openLink(BuildContext context, String url) async {
+  var opened = false;
+  try {
+    opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } catch (_) {}
+  if (!opened && context.mounted) toast(context, 'Не удалось открыть ссылку. Проверьте, что на телефоне есть браузер.');
 }

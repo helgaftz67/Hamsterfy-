@@ -69,7 +69,7 @@ class _HomePageState extends State<HomePage> {
         child: ListenableBuilder(
           listenable: Listenable.merge([library, profiles]),
           builder: (context, _) {
-            final empty = library.all.where((t) => !t.isRadio).isEmpty;
+            final empty = library.songs.isEmpty;
             final top = library.mostPlayed;
             final me = profiles.current;
             return RefreshIndicator(
@@ -148,7 +148,7 @@ class _HomePageState extends State<HomePage> {
                                 label: 'Вперемешку',
                                 onTap: empty
                                     ? null
-                                    : () => player.playAll(library.all.where((t) => !t.isRadio).toList()..shuffle())),
+                                    : () => player.playAll(library.songs..shuffle())),
                           ],
                         ),
                       ],
@@ -511,11 +511,21 @@ class CatalogPage extends StatefulWidget {
   State<CatalogPage> createState() => _CatalogPageState();
 }
 
+/// Search tab: every song in the world catalog (previews), or the free
+/// catalog where whole releases can be played and downloaded.
 class _CatalogPageState extends State<CatalogPage> {
   final _query = TextEditingController();
-  late Future<List<Album>> _albums = catalog.search('');
+  bool _world = true;
+  Future<List<Track>>? _songs;
+  Future<List<Album>>? _albums;
 
-  void _search() => setState(() => _albums = catalog.search(_query.text));
+  void _search() => setState(() {
+        if (_world) {
+          _songs = _query.text.trim().isEmpty ? null : songs.search(_query.text);
+        } else {
+          _albums = catalog.search(_query.text);
+        }
+      });
 
   @override
   void dispose() {
@@ -527,54 +537,107 @@ class _CatalogPageState extends State<CatalogPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 20, 16, 4),
-              child: Text('Каталог', style: kTitle),
+              padding: EdgeInsets.fromLTRB(20, 18, 16, 0),
+              child: Text('Поиск', style: kTitle),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Релизы под свободными лицензиями и концертные записи с Internet Archive.',
-                  style: TextStyle(color: kMuted)),
-            ),
-            _SearchField(controller: _query, hint: 'Исполнитель, релиз или жанр', onSearch: _search),
-            Expanded(
-              child: FutureBuilder<List<Album>>(
-                future: _albums,
-                builder: (context, snap) {
-                  if (snap.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snap.hasError) {
-                    return _Message('Каталог не отвечает. Проверьте подключение к интернету.',
-                        action: 'Повторить', onAction: _search);
-                  }
-                  final albums = snap.data ?? const [];
-                  if (albums.isEmpty) {
-                    return const _Message(
-                        'В открытом каталоге этого нет. Здесь только свободная музыка и концертные записи. Популярных артистов можно услышать по радио на Главной.');
-                  }
-                  return ListView.builder(
-                    itemCount: albums.length,
-                    itemBuilder: (context, i) {
-                      final a = albums[i];
-                      return ListTile(
-                        leading: Cover(a.art, size: 52, seed: a.id),
-                        title: Text(a.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: const Icon(Icons.chevron_right, color: kMuted),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumPage(a))),
-                      );
-                    },
-                  );
-                },
+            _SearchField(
+                controller: _query,
+                hint: _world ? 'Песня или исполнитель' : 'Исполнитель, релиз или жанр',
+                onSearch: _search),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: Row(
+                children: [
+                  for (final (world, label) in [(true, 'Все песни'), (false, 'Свободная музыка')])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(label),
+                        selected: _world == world,
+                        onSelected: (_) {
+                          _world = world;
+                          _search();
+                        },
+                      ),
+                    ),
+                ],
               ),
             ),
+            Expanded(child: _world ? _songList() : _albumList()),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _songList() {
+    if (_songs == null) {
+      return const _Message(
+          'Найдётся любая песня. Трек из вашей медиатеки сыграет целиком, остальные — 30-секундным фрагментом со ссылкой на полную версию.');
+    }
+    return ListenableBuilder(
+      listenable: library,
+      builder: (context, _) => FutureBuilder<List<Track>>(
+        future: _songs,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) {
+            return _Message('Поиск не отвечает. Проверьте подключение к интернету.', action: 'Повторить', onAction: _search);
+          }
+          // Songs the user already owns play in full instead of the preview.
+          final seen = <String>{};
+          final found = [
+            for (final t in snap.data ?? const <Track>[])
+              if (seen.add((library.match(t) ?? t).id)) library.match(t) ?? library.tracks[t.id] ?? t,
+          ];
+          final own = Library.filter(library.songs, _query.text).where((t) => seen.add(t.id)).toList();
+          final all = [...own, ...found];
+          if (all.isEmpty) {
+            return const _Message('Ничего не нашлось. Проверьте написание или попробуйте только имя исполнителя.');
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.only(bottom: 24),
+            itemCount: all.length,
+            itemBuilder: (context, i) => TrackTile(all[i], onTap: () => player.playAll(all, start: i)),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _albumList() {
+    return FutureBuilder<List<Album>>(
+      future: _albums,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+        if (snap.hasError) {
+          return _Message('Каталог не отвечает. Проверьте подключение к интернету.', action: 'Повторить', onAction: _search);
+        }
+        final albums = snap.data ?? const [];
+        if (albums.isEmpty) {
+          return const _Message(
+              'В свободном каталоге этого нет: здесь релизы под свободными лицензиями и концертные записи. Популярных артистов ищите во вкладке «Все песни».');
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.only(bottom: 24),
+          itemCount: albums.length,
+          itemBuilder: (context, i) {
+            final a = albums[i];
+            return ListTile(
+              leading: Cover(a.art, size: 52, seed: a.id),
+              title: Text(a.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.chevron_right_rounded, color: kMuted),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumPage(a))),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -816,6 +879,35 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _busy = false;
   String _query = '';
 
+  /// Ids ticked in selection mode; the mode is on while this is not empty.
+  final Set<String> _selected = {};
+
+  void _toggle(Track t) => setState(() {
+        if (!_selected.remove(t.id)) _selected.add(t.id);
+      });
+
+  Future<void> _removeSelected() async {
+    final picked = [for (final id in _selected) if (library.tracks[id] != null) library.tracks[id]!];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Убрать из медиатеки треков: ${picked.length}?'),
+        content: const Text('Они пропадут из медиатеки, избранного и плейлистов. Ваши файлы в памяти телефона останутся.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Убрать')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final t in picked) {
+      await library.forget(t);
+    }
+    if (!mounted) return;
+    setState(_selected.clear);
+    toast(context, 'Убрано треков: ${picked.length}');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -864,7 +956,7 @@ class _LibraryPageState extends State<LibraryPage> {
           listenable: library,
           builder: (context, _) {
             final inFilter = switch (_filter) {
-              _Filter.all => library.all.where((t) => !t.isRadio).toList(),
+              _Filter.all => library.songs,
               _Filter.favorites => library.favoriteTracks,
               _Filter.stations => library.stations,
               _Filter.downloaded => library.downloaded,
@@ -874,8 +966,40 @@ class _LibraryPageState extends State<LibraryPage> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_selected.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 14, 4, 4),
+                    child: Row(
+                      children: [
+                        IconButton(
+                            tooltip: 'Отменить выделение',
+                            onPressed: () => setState(_selected.clear),
+                            icon: const Icon(Icons.close_rounded)),
+                        Expanded(
+                          child: Text('Выбрано: ${_selected.length}',
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            final ids = tracks.map((t) => t.id).toSet();
+                            if (_selected.containsAll(ids)) {
+                              _selected.clear();
+                            } else {
+                              _selected.addAll(ids);
+                            }
+                          }),
+                          child: Text(_selected.length >= tracks.length ? 'Снять все' : 'Выбрать все'),
+                        ),
+                        IconButton(
+                            tooltip: 'Убрать выбранные из медиатеки',
+                            onPressed: _removeSelected,
+                            icon: const Icon(Icons.delete_outline_rounded)),
+                      ],
+                    ),
+                  )
+                else
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 4, 8),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 4, 8),
                   child: Row(
                     children: [
                       const Expanded(
@@ -914,7 +1038,10 @@ class _LibraryPageState extends State<LibraryPage> {
                           child: ChoiceChip(
                             label: Text(label),
                             selected: _filter == f,
-                            onSelected: (_) => setState(() => _filter = f),
+                            onSelected: (_) => setState(() {
+                              _filter = f;
+                              _selected.clear();
+                            }),
                           ),
                         ),
                     ],
@@ -951,9 +1078,16 @@ class _LibraryPageState extends State<LibraryPage> {
                             itemCount: tracks.length,
                             itemBuilder: (context, i) => TrackTile(
                               tracks[i],
-                              onTap: () => tracks[i].isRadio
-                                  ? player.playAll([tracks[i]])
-                                  : player.playAll(tracks, start: i),
+                              selected: _selected.isEmpty ? null : _selected.contains(tracks[i].id),
+                              onLongPress: () {
+                                HapticFeedback.selectionClick();
+                                _toggle(tracks[i]);
+                              },
+                              onTap: () => _selected.isNotEmpty
+                                  ? _toggle(tracks[i])
+                                  : (tracks[i].isRadio
+                                      ? player.playAll([tracks[i]])
+                                      : player.playAll(tracks, start: i)),
                             ),
                           ),
                   ),

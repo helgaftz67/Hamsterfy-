@@ -7,6 +7,7 @@ import 'library.dart';
 import 'player.dart';
 import 'profiles.dart';
 import 'radio.dart';
+import 'songs.dart';
 import 'ui/pages.dart';
 import 'ui/player_ui.dart';
 import 'ui/profile_ui.dart';
@@ -15,6 +16,7 @@ import 'ui/theme.dart';
 final library = Library();
 final catalog = Catalog();
 final radio = RadioDirectory();
+final songs = SongSearch();
 late final Player player;
 late final Profiles profiles;
 
@@ -114,7 +116,7 @@ class _ShellState extends State<Shell> {
               },
               destinations: const [
                 NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Главная'),
-                NavigationDestination(icon: Icon(Icons.travel_explore), label: 'Каталог'),
+                NavigationDestination(icon: Icon(Icons.search_rounded), label: 'Поиск'),
                 NavigationDestination(
                     icon: Icon(Icons.library_music_outlined),
                     selectedIcon: Icon(Icons.library_music),

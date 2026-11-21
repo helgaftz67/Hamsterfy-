@@ -189,7 +189,7 @@ class PlayerPage extends StatelessWidget {
                               Expanded(
                                 child: Column(
                                   children: [
-                                    Text(t.isRadio ? 'РАДИО' : 'СЕЙЧАС ИГРАЕТ',
+                                    Text(t.isRadio ? 'РАДИО' : (t.isPreview ? 'ФРАГМЕНТ · 30 СЕКУНД' : 'СЕЙЧАС ИГРАЕТ'),
                                         style: TextStyle(
                                             color: Colors.white.withValues(alpha: .7),
                                             fontSize: 11,
@@ -255,6 +255,17 @@ class PlayerPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 14),
                           if (t.isRadio) const _LiveBadge() else const _Seek(),
+                          if (t.isPreview && t.link != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white, side: const BorderSide(color: Colors.white38)),
+                                onPressed: () => openLink(context, t.link!),
+                                icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                                label: const Text('Слушать целиком в Apple Music'),
+                              ),
+                            ),
                           if (player.error != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),

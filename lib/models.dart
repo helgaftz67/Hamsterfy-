@@ -12,6 +12,7 @@ class Track {
     this.durationMs = 0,
     this.auto = false,
     this.size = 0,
+    this.link,
     int? addedAt,
   }) : addedAt = addedAt ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -25,6 +26,9 @@ class Track {
 
   /// Local file path, if the track is on the device.
   String? path;
+
+  /// Store page where the full track can be played, for search previews.
+  final String? link;
 
   /// Cover: a local file path or an http(s) address.
   String? art;
@@ -43,6 +47,9 @@ class Track {
   /// A live internet radio station: an endless stream that cannot be saved.
   bool get isRadio => id.startsWith('radio:');
 
+  /// A song found by the world search: only its 30-second preview plays.
+  bool get isPreview => id.startsWith('it:');
+
   /// A file found on the phone by the system scan. The app never deletes it.
   bool get isDevice => id.startsWith('dev:');
 
@@ -58,6 +65,7 @@ class Track {
         'addedAt': addedAt,
         'auto': auto,
         'size': size,
+        'link': link,
       };
 
   factory Track.fromJson(Map<String, dynamic> j) => Track(
@@ -72,6 +80,7 @@ class Track {
         addedAt: j['addedAt'] as int?,
         auto: j['auto'] as bool? ?? false,
         size: j['size'] as int? ?? 0,
+        link: j['link'] as String?,
       );
 }
 

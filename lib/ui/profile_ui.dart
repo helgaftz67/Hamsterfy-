@@ -292,7 +292,7 @@ class ProfilePage extends StatelessWidget {
         builder: (context, _) {
           final p = profiles.current;
           if (p == null) return const SizedBox.shrink();
-          final tracks = library.tracks.values.where((t) => !t.isRadio).length;
+          final tracks = library.songs.length;
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
             children: [

@@ -5,6 +5,7 @@ import 'package:hamsterfy/models.dart';
 import 'package:hamsterfy/player.dart';
 import 'package:hamsterfy/profiles.dart';
 import 'package:hamsterfy/radio.dart';
+import 'package:hamsterfy/songs.dart';
 
 class FakePlayer implements Player {
   @override
@@ -164,6 +165,27 @@ void main() {
       expect(copy.hidden, {'dev:1'});
       copy.unhideAll();
       expect(copy.applyScan([row(1), row(2)]), 1);
+    });
+
+    test('world search: previews parsed, matched to owned tracks, kept out of mixes', () {
+      const body = '{"resultCount":2,"results":['
+          '{"trackId":7,"trackName":"Night Drive","artistName":"Kavi","collectionName":"Roads","previewUrl":"https://a/p.m4a","artworkUrl100":"https://i/100x100bb.jpg","trackTimeMillis":200000,"trackViewUrl":"https://music/x"},'
+          '{"trackId":8,"trackName":"No preview","artistName":"Z"}]}';
+      final found = SongSearch.parse(body);
+      expect(found.single.id, 'it:7');
+      expect(found.single.isPreview, isTrue);
+      expect(found.single.art, 'https://i/600x600bb.jpg');
+      expect(found.single.link, 'https://music/x');
+      final lib = Library();
+      expect(lib.match(found.single), isNull);
+      lib.tracks['own'] = Track(id: 'own', title: 'night drive!', artist: 'KAVI feat. Someone', path: '/m/n.mp3');
+      expect(lib.match(found.single)!.id, 'own');
+      lib.toggleFavoriteForTest(found.single);
+      expect(lib.songs.map((t) => t.id), ['own']);
+      expect(lib.wave().map((t) => t.id), ['own']);
+      expect(lib.favoriteTracks.single.id, 'it:7');
+      final copy = Library()..restore(lib.snapshot());
+      expect(copy.tracks['it:7']!.link, 'https://music/x');
     });
 
     test('snapshot round-trips favourites and plays', () {

@@ -129,6 +129,22 @@ class Library extends ChangeNotifier {
   // ---- Lists -------------------------------------------------------------
 
   List<Track> get all => tracks.values.toList()..sort((a, b) => b.addedAt.compareTo(a.addedAt));
+  /// Full tracks only: no radio stations and no search previews.
+  List<Track> get songs => all.where((t) => !t.isRadio && !t.isPreview).toList();
+
+  /// A full track in the library that is the same song as [found], if any.
+  Track? match(Track found) {
+    String norm(String v) => v.toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '');
+    final title = norm(found.title), artist = norm(found.artist);
+    if (title.isEmpty) return null;
+    for (final t in tracks.values) {
+      if (t.isRadio || t.isPreview || norm(t.title) != title) continue;
+      final a = norm(t.artist);
+      if (a == artist || (a.isNotEmpty && (a.contains(artist) || artist.contains(a)))) return t;
+    }
+    return null;
+  }
+
   List<Track> get favoriteTracks => all.where((t) => favorites.contains(t.id)).toList();
   List<Track> get downloaded => all.where((t) => t.isLocal).toList();
   List<Track> get stations => all.where((t) => t.isRadio).toList();
@@ -307,7 +323,7 @@ class Library extends ChangeNotifier {
   /// Saves a catalog track to the device for offline listening. With [auto]
   /// the file belongs to the listening cache and may be evicted later.
   Future<void> download(Track t, {bool auto = false}) async {
-    if (t.isLocal || t.isRadio || t.url == null || downloading.containsKey(t.id)) return;
+    if (t.isLocal || t.isRadio || t.isPreview || t.url == null || downloading.containsKey(t.id)) return;
     downloading[t.id] = 0;
     notifyListeners();
     final dest = File('$_music/${_safe(t.id)}.mp3');
@@ -405,7 +421,7 @@ class Library extends ChangeNotifier {
   /// Called when a track starts playing: saves it to the cache and makes
   /// room if the cache is over its limit. [playingId] is never evicted.
   Future<void> cacheAfterPlay(Track t) async {
-    if (!autoCache || t.isLocal || t.isRadio || t.url == null) return;
+    if (!autoCache || t.isLocal || t.isRadio || t.isPreview || t.url == null) return;
     try {
       await download(t, auto: true);
     } catch (_) {
@@ -477,7 +493,7 @@ class Library extends ChangeNotifier {
       return s;
     }
 
-    final scored = {for (final t in tracks.values) if (!t.isRadio) t: score(t)};
+    final scored = {for (final t in tracks.values) if (!t.isRadio && !t.isPreview) t: score(t)};
     final pool = scored.keys.toList()..sort((a, b) => scored[b]!.compareTo(scored[a]!));
     final out = <Track>[];
     while (pool.isNotEmpty) {
@@ -489,7 +505,7 @@ class Library extends ChangeNotifier {
 
   /// Tracks played most often.
   List<Track> get mostPlayed {
-    final list = tracks.values.where((t) => (plays[t.id] ?? 0) > 0).toList()
+    final list = tracks.values.where((t) => !t.isPreview && (plays[t.id] ?? 0) > 0).toList()
       ..sort((a, b) => plays[b.id]!.compareTo(plays[a.id]!));
     return list.take(20).toList();
   }
@@ -498,7 +514,7 @@ class Library extends ChangeNotifier {
   List<Track> forgotten({int? now}) {
     final t0 = now ?? DateTime.now().millisecondsSinceEpoch;
     const twoWeeks = 14 * 24 * 3600 * 1000;
-    final list = tracks.values.where((t) => !t.isRadio && t0 - (lastPlayed[t.id] ?? 0) > twoWeeks).toList()
+    final list = tracks.values.where((t) => !t.isRadio && !t.isPreview && t0 - (lastPlayed[t.id] ?? 0) > twoWeeks).toList()
       ..sort((a, b) => (lastPlayed[a.id] ?? 0).compareTo(lastPlayed[b.id] ?? 0));
     return list.take(30).toList();
   }
