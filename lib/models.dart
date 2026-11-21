@@ -31,6 +31,12 @@ class Track {
 
   bool get isLocal => path != null;
 
+  /// A live internet radio station: an endless stream that cannot be saved.
+  bool get isRadio => id.startsWith('radio:');
+
+  /// A file found on the phone by the system scan. The app never deletes it.
+  bool get isDevice => id.startsWith('dev:');
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,

@@ -6,8 +6,10 @@ import 'dart:math';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'models.dart';
 
@@ -19,10 +21,14 @@ class Library extends ChangeNotifier {
   final Map<String, int> plays = {};
   final Map<String, int> lastPlayed = {};
 
+  /// Playlists by name, each an ordered list of track ids.
+  final Map<String, List<String>> playlists = {};
+
   /// Download progress per track id, 0..1.
   final Map<String, double> downloading = {};
 
   late Directory _dir;
+  bool _opened = false;
   String _profile = 'main';
   Timer? _saveTimer;
   final _random = Random();
@@ -39,17 +45,19 @@ class Library extends ChangeNotifier {
   /// forgets its data and loads the new collection.
   Future<void> open(String profile) async {
     _dir = await getApplicationDocumentsDirectory();
-    if (_saveTimer?.isActive ?? false) {
+    if (_opened && (_saveTimer?.isActive ?? false)) {
       _saveTimer!.cancel();
       try {
         await _file.writeAsString(jsonEncode(snapshot()));
       } catch (_) {}
     }
     _profile = profile;
+    _opened = true;
     tracks.clear();
     favorites.clear();
     plays.clear();
     lastPlayed.clear();
+    playlists.clear();
     downloading.clear();
     await Directory(_music).create(recursive: true);
     if (!await _file.exists()) {
@@ -73,6 +81,9 @@ class Library extends ChangeNotifier {
     favorites.addAll((j['favorites'] as List? ?? const []).cast<String>());
     plays.addAll((j['plays'] as Map? ?? const {}).cast<String, int>());
     lastPlayed.addAll((j['lastPlayed'] as Map? ?? const {}).cast<String, int>());
+    (j['playlists'] as Map? ?? const {}).forEach((name, ids) {
+      playlists[name as String] = (ids as List).cast<String>().toList();
+    });
   }
 
   Map<String, dynamic> snapshot() => {
@@ -80,10 +91,13 @@ class Library extends ChangeNotifier {
         'favorites': favorites.toList(),
         'plays': plays,
         'lastPlayed': lastPlayed,
+        'playlists': playlists,
       };
 
   void _changed() {
     notifyListeners();
+    // Nothing to write to until a profile has been opened.
+    if (!_opened) return;
     _saveTimer?.cancel();
     final file = _file;
     final data = jsonEncode(snapshot());
@@ -99,6 +113,7 @@ class Library extends ChangeNotifier {
   List<Track> get all => tracks.values.toList()..sort((a, b) => b.addedAt.compareTo(a.addedAt));
   List<Track> get favoriteTracks => all.where((t) => favorites.contains(t.id)).toList();
   List<Track> get downloaded => all.where((t) => t.isLocal).toList();
+  List<Track> get stations => all.where((t) => t.isRadio).toList();
   bool isFavorite(Track t) => favorites.contains(t.id);
 
   /// Filters [source] by words found in the title, artist or album.
@@ -121,10 +136,109 @@ class Library extends ChangeNotifier {
     _changed();
   }
 
+  @visibleForTesting
+  void toggleFavoriteForTest(Track t) {
+    favorites.add(t.id);
+    tracks[t.id] = t;
+  }
+
   void recordPlay(Track t) {
     plays[t.id] = (plays[t.id] ?? 0) + 1;
     lastPlayed[t.id] = DateTime.now().millisecondsSinceEpoch;
     _changed();
+  }
+
+  // ---- Playlists ----------------------------------------------------------
+
+  List<String> get playlistNames => playlists.keys.toList();
+
+  List<Track> playlistTracks(String name) =>
+      [for (final id in playlists[name] ?? const <String>[]) if (tracks[id] != null) tracks[id]!];
+
+  /// Returns false when a playlist with this name already exists.
+  bool createPlaylist(String name) {
+    final clean = name.trim();
+    if (clean.isEmpty || playlists.containsKey(clean)) return false;
+    playlists[clean] = [];
+    _changed();
+    return true;
+  }
+
+  /// Returns false when the track is already in the playlist.
+  bool addToPlaylist(String name, Track t) {
+    final ids = playlists.putIfAbsent(name, () => []);
+    if (ids.contains(t.id)) return false;
+    ids.add(t.id);
+    tracks.putIfAbsent(t.id, () => t);
+    _changed();
+    return true;
+  }
+
+  void removeFromPlaylist(String name, Track t) {
+    playlists[name]?.remove(t.id);
+    _changed();
+  }
+
+  void deletePlaylist(String name) {
+    playlists.remove(name);
+    _changed();
+  }
+
+  bool _inPlaylist(String id) => playlists.values.any((ids) => ids.contains(id));
+
+  // ---- Music already on the phone ------------------------------------------
+
+  static const _media = MethodChannel('hamsterfy/media');
+
+  /// Syncs the library with the music files Android knows about: new files
+  /// are added, files that disappeared are dropped. Returns the number of
+  /// new tracks, or -1 when access to music was not granted. With
+  /// [ask] false the permission dialog is never shown.
+  Future<int> scanDevice({bool ask = true}) async {
+    var granted = await Permission.audio.isGranted || await Permission.storage.isGranted;
+    if (!granted && ask) {
+      final audio = await Permission.audio.request();
+      final storage = audio.isGranted ? audio : await Permission.storage.request();
+      granted = audio.isGranted || storage.isGranted;
+    }
+    if (!granted) return -1;
+    final rows = (await _media.invokeMethod<List<dynamic>>('scan')) ?? const [];
+    return applyScan([for (final r in rows) Map<String, dynamic>.from(r as Map)]);
+  }
+
+  @visibleForTesting
+  int applyScan(List<Map<String, dynamic>> rows) {
+    final seen = <String>{};
+    var added = 0;
+    for (final r in rows) {
+      final path = r['path'] as String?;
+      // Skip clips shorter than 30 seconds: ringtones and voice notes.
+      if (path == null || (r['durationMs'] as int? ?? 0) < 30000) continue;
+      final id = 'dev:${r['id']}';
+      seen.add(id);
+      if (tracks.containsKey(id)) continue;
+      final artist = (r['artist'] as String? ?? '').trim();
+      final title = (r['title'] as String? ?? '').trim();
+      tracks[id] = Track(
+        id: id,
+        title: title.isEmpty ? path.split('/').last : title,
+        artist: artist.isEmpty || artist == '<unknown>' ? 'Неизвестный исполнитель' : artist,
+        album: (r['album'] as String? ?? '').trim(),
+        path: path,
+        durationMs: r['durationMs'] as int? ?? 0,
+      );
+      added++;
+    }
+    final gone = tracks.keys.where((id) => id.startsWith('dev:') && !seen.contains(id)).toList();
+    for (final id in gone) {
+      tracks.remove(id);
+      favorites.remove(id);
+      for (final ids in playlists.values) {
+        ids.remove(id);
+      }
+    }
+    if (added > 0 || gone.isNotEmpty) _changed();
+    return added;
   }
 
   // ---- Import and download -----------------------------------------------
@@ -213,16 +327,19 @@ class Library extends ChangeNotifier {
   /// as streams if they are favourites; everything else is dropped.
   Future<void> remove(Track t) async {
     final path = t.path;
-    if (path != null) {
+    if (path != null && !t.isDevice) {
       for (final p in [path, '$path.cover']) {
         final f = File(p);
         if (await f.exists()) await f.delete();
       }
     }
     t.path = null;
-    if (t.url == null || !favorites.contains(t.id)) {
+    if (t.url == null || !(favorites.contains(t.id) || _inPlaylist(t.id))) {
       tracks.remove(t.id);
       favorites.remove(t.id);
+      for (final ids in playlists.values) {
+        ids.remove(t.id);
+      }
     }
     _changed();
   }
@@ -246,7 +363,7 @@ class Library extends ChangeNotifier {
       return s;
     }
 
-    final scored = {for (final t in tracks.values) t: score(t)};
+    final scored = {for (final t in tracks.values) if (!t.isRadio) t: score(t)};
     final pool = scored.keys.toList()..sort((a, b) => scored[b]!.compareTo(scored[a]!));
     final out = <Track>[];
     while (pool.isNotEmpty) {
@@ -267,7 +384,7 @@ class Library extends ChangeNotifier {
   List<Track> forgotten({int? now}) {
     final t0 = now ?? DateTime.now().millisecondsSinceEpoch;
     const twoWeeks = 14 * 24 * 3600 * 1000;
-    final list = tracks.values.where((t) => t0 - (lastPlayed[t.id] ?? 0) > twoWeeks).toList()
+    final list = tracks.values.where((t) => !t.isRadio && t0 - (lastPlayed[t.id] ?? 0) > twoWeeks).toList()
       ..sort((a, b) => (lastPlayed[a.id] ?? 0).compareTo(lastPlayed[b.id] ?? 0));
     return list.take(30).toList();
   }
@@ -277,7 +394,7 @@ class Library extends ChangeNotifier {
     final weight = <String, double>{};
     for (final t in tracks.values) {
       final w = (favorites.contains(t.id) ? 3 : 0) + (plays[t.id] ?? 0);
-      if (w > 0 && !t.artist.startsWith('Неизвестный')) {
+      if (w > 0 && !t.isRadio && !t.artist.startsWith('Неизвестный')) {
         weight[t.artist] = (weight[t.artist] ?? 0) + w;
       }
     }

@@ -86,7 +86,7 @@ class _HomePageState extends State<HomePage> {
                     const Padding(
                       padding: EdgeInsets.fromLTRB(24, 4, 24, 16),
                       child: Text(
-                        'Волна собирается из вашей коллекции. Добавьте файлы в Медиатеке или отметьте треки из Каталога.',
+                        'Волна собирается из вашей коллекции. Откройте Медиатеку и найдите музыку на телефоне или включите радио в Каталоге.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: kMuted),
                       ),
@@ -408,9 +408,17 @@ class CatalogPage extends StatefulWidget {
 
 class _CatalogPageState extends State<CatalogPage> {
   final _query = TextEditingController();
-  late Future<List<Album>> _results = catalog.search('');
+  bool _radio = true;
+  late Future<List<Track>> _stations = radio.search('');
+  Future<List<Album>>? _albums;
 
-  void _search() => setState(() => _results = catalog.search(_query.text));
+  void _search() => setState(() {
+        if (_radio) {
+          _stations = radio.search(_query.text);
+        } else {
+          _albums = catalog.search(_query.text);
+        }
+      });
 
   @override
   void dispose() {
@@ -426,19 +434,38 @@ class _CatalogPageState extends State<CatalogPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 20, 16, 4),
+              padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
               child: Text('Каталог', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Свободная музыка и концертные записи с Internet Archive. Ищите по исполнителю, названию или жанру.',
-                  style: TextStyle(color: kMuted)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: true, icon: Icon(Icons.sensors), label: Text('Радио')),
+                  ButtonSegment(value: false, icon: Icon(Icons.album_outlined), label: Text('Свободная музыка')),
+                ],
+                selected: {_radio},
+                onSelectionChanged: (v) {
+                  _radio = v.first;
+                  _search();
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Text(
+                _radio
+                    ? 'Живой эфир станций со всего мира. Перемотать или скачать эфир нельзя.'
+                    : 'Релизы под свободными лицензиями и концертные записи с Internet Archive.',
+                style: const TextStyle(color: kMuted),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: SearchBar(
                 controller: _query,
-                hintText: 'Исполнитель, релиз или жанр',
+                hintText: _radio ? 'Станция или жанр: шансон, rock' : 'Исполнитель, релиз или жанр',
                 leading: const Icon(Icons.search),
                 elevation: const WidgetStatePropertyAll(0),
                 backgroundColor: const WidgetStatePropertyAll(kSurface),
@@ -457,43 +484,61 @@ class _CatalogPageState extends State<CatalogPage> {
                 ],
               ),
             ),
-            Expanded(
-              child: FutureBuilder<List<Album>>(
-                future: _results,
-                builder: (context, snap) {
-                  if (snap.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snap.hasError) {
-                    return _Message(
-                      'Каталог не отвечает. Проверьте подключение к интернету.',
-                      action: 'Повторить',
-                      onAction: _search,
-                    );
-                  }
-                  final albums = snap.data!;
-                  if (albums.isEmpty) {
-                    return const _Message('В открытом каталоге этого нет. Здесь только свободная музыка и концертные записи. Трек, который есть у вас файлом, добавьте в Медиатеке.');
-                  }
-                  return ListView.builder(
-                    itemCount: albums.length,
-                    itemBuilder: (context, i) {
-                      final a = albums[i];
-                      return ListTile(
-                        leading: Cover(a.art, size: 52, seed: a.id),
-                        title: Text(a.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: const Icon(Icons.chevron_right, color: kMuted),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumPage(a))),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
+            Expanded(child: _radio ? _stationList() : _albumList()),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _stationList() {
+    return FutureBuilder<List<Track>>(
+      future: _stations,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+        if (snap.hasError) {
+          return _Message('Список станций не загрузился. Проверьте подключение к интернету.',
+              action: 'Повторить', onAction: _search);
+        }
+        final stations = snap.data!;
+        if (stations.isEmpty) {
+          return const _Message('Станций с таким названием или жанром нет. Попробуйте другое слово, например «rock» или «ретро».');
+        }
+        return ListView.builder(
+          itemCount: stations.length,
+          itemBuilder: (context, i) => TrackTile(stations[i], onTap: () => player.playAll([stations[i]])),
+        );
+      },
+    );
+  }
+
+  Widget _albumList() {
+    return FutureBuilder<List<Album>>(
+      future: _albums,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+        if (snap.hasError) {
+          return _Message('Каталог не отвечает. Проверьте подключение к интернету.', action: 'Повторить', onAction: _search);
+        }
+        final albums = snap.data ?? const [];
+        if (albums.isEmpty) {
+          return const _Message(
+              'В открытом каталоге этого нет. Здесь только свободная музыка и концертные записи. Популярных артистов ищите во вкладке «Радио».');
+        }
+        return ListView.builder(
+          itemCount: albums.length,
+          itemBuilder: (context, i) {
+            final a = albums[i];
+            return ListTile(
+              leading: Cover(a.art, size: 52, seed: a.id),
+              title: Text(a.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.chevron_right, color: kMuted),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumPage(a))),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -609,7 +654,7 @@ class _AlbumPageState extends State<AlbumPage> {
 
 // ------------------------------------------------------------- Library ----
 
-enum _Filter { all, favorites, downloaded }
+enum _Filter { all, favorites, playlists, stations, downloaded }
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -620,99 +665,151 @@ class LibraryPage extends StatefulWidget {
 
 class _LibraryPageState extends State<LibraryPage> {
   _Filter _filter = _Filter.all;
-  bool _importing = false;
+  bool _busy = false;
   String _query = '';
 
-  Future<void> _import() async {
-    setState(() => _importing = true);
+  @override
+  void initState() {
+    super.initState();
+    // Pick up new files quietly when access was already granted.
+    library.scanDevice(ask: false).catchError((_) => 0);
+  }
+
+  Future<void> _run(Future<void> Function() job) async {
+    setState(() => _busy = true);
     try {
-      final n = await library.importFiles();
-      if (mounted && n > 0) toast(context, 'Добавлено треков: $n');
-    } catch (_) {
-      if (mounted) toast(context, 'Не удалось добавить файлы. Попробуйте выбрать их снова.');
+      await job();
     } finally {
-      if (mounted) setState(() => _importing = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
+
+  Future<void> _import() => _run(() async {
+        try {
+          final n = await library.importFiles();
+          if (mounted && n > 0) toast(context, 'Добавлено треков: $n');
+        } catch (_) {
+          if (mounted) toast(context, 'Не удалось добавить файлы. Попробуйте выбрать их снова.');
+        }
+      });
+
+  Future<void> _scan() => _run(() async {
+        try {
+          final n = await library.scanDevice();
+          if (!mounted) return;
+          toast(
+            context,
+            n < 0
+                ? 'Нет доступа к музыке. Разрешите его в настройках телефона: Приложения → Hamsterfy → Разрешения.'
+                : (n == 0 ? 'Новых треков на телефоне нет' : 'Найдено новых треков: $n'),
+          );
+        } catch (_) {
+          if (mounted) toast(context, 'Не удалось просмотреть память телефона. Попробуйте ещё раз.');
+        }
+      });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _importing ? null : _import,
-        icon: _importing
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.5))
-            : const Icon(Icons.add),
-        label: const Text('Добавить файлы'),
-      ),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: library,
           builder: (context, _) {
             final inFilter = switch (_filter) {
-              _Filter.all => library.all,
+              _Filter.all => library.all.where((t) => !t.isRadio).toList(),
               _Filter.favorites => library.favoriteTracks,
+              _Filter.stations => library.stations,
               _Filter.downloaded => library.downloaded,
+              _Filter.playlists => const <Track>[],
             };
             final tracks = Library.filter(inFilter, _query);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
-                  child: Text('Медиатека', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
-                ),
                 Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 4, 8),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Медиатека', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                      ),
+                      if (_busy)
+                        const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                        )
+                      else ...[
+                        IconButton(
+                            tooltip: 'Найти музыку на телефоне',
+                            onPressed: _scan,
+                            icon: const Icon(Icons.phonelink_setup)),
+                        IconButton(
+                            tooltip: 'Добавить файлы вручную', onPressed: _import, icon: const Icon(Icons.add)),
+                      ],
+                    ],
+                  ),
+                ),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Wrap(
-                    spacing: 8,
+                  child: Row(
                     children: [
                       for (final (f, label) in [
-                        (_Filter.all, 'Все'),
+                        (_Filter.all, 'Треки'),
                         (_Filter.favorites, 'Избранное'),
+                        (_Filter.playlists, 'Плейлисты'),
+                        (_Filter.stations, 'Радио'),
                         (_Filter.downloaded, 'На устройстве'),
                       ])
-                        ChoiceChip(
-                          label: Text(label),
-                          selected: _filter == f,
-                          onSelected: (_) => setState(() => _filter = f),
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(label),
+                            selected: _filter == f,
+                            onSelected: (_) => setState(() => _filter = f),
+                          ),
                         ),
                     ],
                   ),
                 ),
-                if (library.tracks.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _query = v),
-                      textInputAction: TextInputAction.search,
-                      decoration: InputDecoration(
-                        hintText: 'Поиск по медиатеке',
-                        prefixIcon: const Icon(Icons.search),
-                        filled: true,
-                        fillColor: kSurface,
-                        isDense: true,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
+                const SizedBox(height: 8),
+                if (_filter == _Filter.playlists)
+                  Expanded(child: _playlists())
+                else ...[
+                  if (inFilter.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: TextField(
+                        onChanged: (v) => setState(() => _query = v),
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText: 'Поиск по медиатеке',
+                          prefixIcon: const Icon(Icons.search),
+                          filled: true,
+                          fillColor: kSurface,
+                          isDense: true,
+                          border:
+                              OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
+                        ),
                       ),
                     ),
+                  Expanded(
+                    child: tracks.isEmpty
+                        ? (inFilter.isNotEmpty
+                            ? const _Message('В медиатеке такого нет. Проверьте написание или поищите в Каталоге.')
+                            : _empty())
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 24),
+                            itemCount: tracks.length,
+                            itemBuilder: (context, i) => TrackTile(
+                              tracks[i],
+                              onTap: () => tracks[i].isRadio
+                                  ? player.playAll([tracks[i]])
+                                  : player.playAll(tracks, start: i),
+                            ),
+                          ),
                   ),
-                Expanded(
-                  child: tracks.isEmpty && _query.trim().isNotEmpty
-                      ? const _Message('В медиатеке такого нет. Проверьте написание или поищите в Каталоге.')
-                      : tracks.isEmpty
-                      ? _Message(switch (_filter) {
-                          _Filter.all =>
-                            'Здесь появится ваша музыка. Добавьте файлы с телефона или отметьте треки в Каталоге.',
-                          _Filter.favorites => 'Отмечайте треки сердечком, и они соберутся здесь.',
-                          _Filter.downloaded => 'Скачанные и добавленные с телефона треки играют без интернета.',
-                        })
-                      : ListView.builder(
-                          padding: const EdgeInsets.only(top: 8, bottom: 88),
-                          itemCount: tracks.length,
-                          itemBuilder: (context, i) =>
-                              TrackTile(tracks[i], onTap: () => player.playAll(tracks, start: i)),
-                        ),
-                ),
+                ],
               ],
             );
           },
@@ -720,23 +817,100 @@ class _LibraryPageState extends State<LibraryPage> {
       ),
     );
   }
+
+  Widget _empty() => switch (_filter) {
+        _Filter.all => _Message(
+            'Здесь появится ваша музыка. Приложение может само найти все треки на телефоне.',
+            action: 'Найти музыку на телефоне',
+            onAction: _scan,
+          ),
+        _Filter.favorites => const _Message('Отмечайте треки и станции сердечком, и они соберутся здесь.'),
+        _Filter.stations => const _Message('Отметьте станцию сердечком в Каталоге, и она появится здесь.'),
+        _ => const _Message('Треки с телефона и скачанные из каталога играют без интернета.'),
+      };
+
+  Widget _playlists() {
+    final names = library.playlistNames;
+    return ListView(
+      children: [
+        ListTile(
+          leading: const CircleAvatar(backgroundColor: kSunken, child: Icon(Icons.add, color: kAccent)),
+          title: const Text('Новый плейлист'),
+          onTap: () => newPlaylistDialog(context),
+        ),
+        if (names.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: Text('Собирайте треки в плейлисты: откройте меню трека и выберите «Добавить в плейлист».',
+                textAlign: TextAlign.center, style: TextStyle(color: kMuted)),
+          ),
+        for (final name in names)
+          ListTile(
+            leading: Cover(library.playlistTracks(name).firstOrNull?.art, seed: name),
+            title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text('Треков: ${library.playlists[name]!.length}'),
+            trailing: const Icon(Icons.chevron_right, color: kMuted),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TrackListPage(title: name, tracks: () => library.playlistTracks(name), playlist: name),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// A plain list of tracks with "play all" and "shuffle".
 class TrackListPage extends StatelessWidget {
-  const TrackListPage({super.key, required this.title, required this.tracks});
+  const TrackListPage({super.key, required this.title, required this.tracks, this.playlist});
   final String title;
   final List<Track> Function() tracks;
+
+  /// Name of the playlist this page shows, if it is one.
+  final String? playlist;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          if (playlist != null)
+            IconButton(
+              tooltip: 'Удалить плейлист',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () async {
+                final nav = Navigator.of(context);
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (d) => AlertDialog(
+                    title: Text('Удалить плейлист «$playlist»?'),
+                    content: const Text('Сами треки останутся в медиатеке.'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+                      FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Удалить')),
+                    ],
+                  ),
+                );
+                if (ok == true) {
+                  library.deletePlaylist(playlist!);
+                  nav.pop();
+                }
+              },
+            ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: library,
         builder: (context, _) {
           final list = tracks();
-          if (list.isEmpty) return const _Message('Пока пусто.');
+          if (list.isEmpty) {
+            return _Message(playlist == null
+                ? 'Пока пусто.'
+                : 'В плейлисте пока нет треков. Откройте меню любого трека и выберите «Добавить в плейлист».');
+          }
           return ListView.builder(
             itemCount: list.length + 1,
             itemBuilder: (context, i) {
@@ -758,7 +932,7 @@ class TrackListPage extends StatelessWidget {
                   ),
                 );
               }
-              return TrackTile(list[i - 1], onTap: () => player.playAll(list, start: i - 1));
+              return TrackTile(list[i - 1], playlist: playlist, onTap: () => player.playAll(list, start: i - 1));
             },
           );
         },

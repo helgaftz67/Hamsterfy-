@@ -4,6 +4,7 @@ import 'package:hamsterfy/library.dart';
 import 'package:hamsterfy/models.dart';
 import 'package:hamsterfy/player.dart';
 import 'package:hamsterfy/profiles.dart';
+import 'package:hamsterfy/radio.dart';
 
 class FakePlayer implements Player {
   @override
@@ -86,6 +87,48 @@ void main() {
       expect(profiles.checkPin(p, '1234'), isTrue);
       expect(profiles.checkPin(p, '0000'), isFalse);
       expect(profiles.checkPin(Profile(id: 'x', name: 'Без пина'), ''), isTrue);
+    });
+
+    test('device scan adds new files, skips short clips, drops vanished ones', () {
+      final lib = Library();
+      Map<String, dynamic> row(int id, int ms) =>
+          {'id': id, 'title': 'S$id', 'artist': '<unknown>', 'album': '', 'durationMs': ms, 'path': '/m/$id.mp3'};
+      expect(lib.applyScan([row(1, 200000), row(2, 5000), row(3, 180000)]), 2);
+      expect(lib.tracks.keys.toSet(), {'dev:1', 'dev:3'});
+      expect(lib.tracks['dev:1']!.artist, 'Неизвестный исполнитель');
+      lib.favorites.add('dev:3');
+      expect(lib.applyScan([row(1, 200000)]), 0);
+      expect(lib.tracks.keys.toSet(), {'dev:1'});
+      expect(lib.favorites, isEmpty);
+    });
+
+    test('playlists: create, add once, list in order, survive snapshot', () {
+      final lib = seeded();
+      expect(lib.createPlaylist('Дорога'), isTrue);
+      expect(lib.createPlaylist('Дорога'), isFalse);
+      expect(lib.addToPlaylist('Дорога', lib.tracks['t2']!), isTrue);
+      expect(lib.addToPlaylist('Дорога', lib.tracks['t0']!), isTrue);
+      expect(lib.addToPlaylist('Дорога', lib.tracks['t0']!), isFalse);
+      final copy = Library()..restore(lib.snapshot());
+      expect(copy.playlistTracks('Дорога').map((t) => t.id), ['t2', 't0']);
+      copy.removeFromPlaylist('Дорога', copy.tracks['t2']!);
+      expect(copy.playlistTracks('Дорога').single.id, 't0');
+    });
+
+    test('radio: stations deduplicated, sorted by listeners, never in the wave', () {
+      final stations = RadioDirectory.parse([
+        {'stationuuid': 'a', 'name': 'Low', 'url_resolved': 'http://x/low', 'clickcount': 1, 'tags': 'rock,pop', 'country': 'RU', 'favicon': 'http://x/i.png'},
+        {'stationuuid': 'b', 'name': 'High', 'url_resolved': 'https://x/high', 'clickcount': 9, 'tags': '', 'country': '', 'favicon': 'https://x/i.png'},
+        {'stationuuid': 'a', 'name': 'Low again', 'url_resolved': 'http://x/low', 'clickcount': 1},
+        {'stationuuid': 'c', 'name': 'Broken', 'url_resolved': ''},
+      ]);
+      expect(stations.map((t) => t.title), ['High', 'Low']);
+      expect(stations[1].artist, 'Радио · RU · rock, pop');
+      expect(stations[1].art, isNull);
+      expect(stations[0].isRadio, isTrue);
+      final lib = seeded()..toggleFavoriteForTest(stations[0]);
+      expect(lib.wave().any((t) => t.isRadio), isFalse);
+      expect(lib.stations.single.title, 'High');
     });
 
     test('snapshot round-trips favourites and plays', () {

@@ -6,6 +6,7 @@ import 'catalog.dart';
 import 'library.dart';
 import 'player.dart';
 import 'profiles.dart';
+import 'radio.dart';
 import 'ui/pages.dart';
 import 'ui/player_ui.dart';
 import 'ui/profile_ui.dart';
@@ -13,6 +14,7 @@ import 'ui/theme.dart';
 
 final library = Library();
 final catalog = Catalog();
+final radio = RadioDirectory();
 late final Player player;
 late final Profiles profiles;
 

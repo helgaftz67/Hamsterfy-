@@ -79,9 +79,12 @@ class Cover extends StatelessWidget {
 
 /// One row in any track list: cover, title, artist, state and a menu.
 class TrackTile extends StatelessWidget {
-  const TrackTile(this.track, {super.key, required this.onTap});
+  const TrackTile(this.track, {super.key, required this.onTap, this.playlist});
   final Track track;
   final VoidCallback onTap;
+
+  /// Set when the row is shown inside a playlist, to offer removal from it.
+  final String? playlist;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +105,10 @@ class TrackTile extends StatelessWidget {
               style: TextStyle(color: isCurrent ? kAccent : kInk, fontWeight: FontWeight.w500)),
           subtitle: Row(
             children: [
-              if (t.isLocal) ...[
+              if (t.isRadio) ...[
+                const Icon(Icons.sensors, size: 14, color: kAmber),
+                const SizedBox(width: 4),
+              ] else if (t.isLocal) ...[
                 const Icon(Icons.download_done, size: 14, color: kAmber),
                 const SizedBox(width: 4),
               ],
@@ -135,13 +141,20 @@ class TrackTile extends StatelessWidget {
                       }
                     case 'remove':
                       await library.remove(t);
+                    case 'playlist':
+                      if (context.mounted) await addToPlaylistDialog(context, t);
+                    case 'unlist':
+                      library.removeFromPlaylist(playlist!, t);
                   }
                 },
                 itemBuilder: (_) => [
                   PopupMenuItem(value: 'fav', child: Text(fav ? 'Убрать из избранного' : 'В избранное')),
-                  if (!t.isLocal && t.url != null && progress == null)
+                  const PopupMenuItem(value: 'playlist', child: Text('Добавить в плейлист')),
+                  if (playlist != null) const PopupMenuItem(value: 'unlist', child: Text('Убрать из плейлиста')),
+                  if (!t.isLocal && !t.isRadio && t.url != null && progress == null)
                     const PopupMenuItem(value: 'download', child: Text('Скачать')),
-                  if (t.isLocal) const PopupMenuItem(value: 'remove', child: Text('Удалить с устройства')),
+                  if (t.isLocal && !t.isDevice)
+                    const PopupMenuItem(value: 'remove', child: Text('Удалить с устройства')),
                 ],
               ),
             ],
@@ -150,4 +163,75 @@ class TrackTile extends StatelessWidget {
       },
     );
   }
+}
+
+/// Asks for a name and creates a playlist. Returns the name, or null.
+Future<String?> newPlaylistDialog(BuildContext context) {
+  final name = TextEditingController();
+  String? error;
+  return showDialog<String>(
+    context: context,
+    builder: (d) => StatefulBuilder(
+      builder: (d, setState) {
+        void submit() {
+          final clean = name.text.trim();
+          if (clean.isEmpty) {
+            setState(() => error = 'Введите название');
+          } else if (!library.createPlaylist(clean)) {
+            setState(() => error = 'Такой плейлист уже есть');
+          } else {
+            Navigator.pop(d, clean);
+          }
+        }
+
+        return AlertDialog(
+          title: const Text('Новый плейлист'),
+          content: TextField(
+            controller: name,
+            autofocus: true,
+            maxLength: 40,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(labelText: 'Название', errorText: error, border: const OutlineInputBorder()),
+            onSubmitted: (_) => submit(),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d), child: const Text('Отмена')),
+            FilledButton(onPressed: submit, child: const Text('Создать')),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+/// Lets the user pick a playlist for [t], or create a new one.
+Future<void> addToPlaylistDialog(BuildContext context, Track t) async {
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    backgroundColor: kSurface,
+    showDragHandle: true,
+    builder: (sheet) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.add, color: kAccent),
+            title: const Text('Новый плейлист'),
+            onTap: () => Navigator.pop(sheet, '\u0000new'),
+          ),
+          for (final name in library.playlistNames)
+            ListTile(
+              leading: const Icon(Icons.queue_music),
+              title: Text(name),
+              subtitle: Text('Треков: ${library.playlists[name]!.length}'),
+              onTap: () => Navigator.pop(sheet, name),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (choice == null || !context.mounted) return;
+  final name = choice == '\u0000new' ? await newPlaylistDialog(context) : choice;
+  if (name == null || !context.mounted) return;
+  toast(context, library.addToPlaylist(name, t) ? 'Добавлено в «$name»' : 'Этот трек уже есть в «$name»');
 }
