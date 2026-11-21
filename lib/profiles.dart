@@ -43,19 +43,41 @@ class Profiles extends ChangeNotifier {
 
   static String hashPin(String id, String pin) => sha256.convert(utf8.encode('$id:$pin')).toString();
 
+  /// Id of the account that stays signed in between launches.
+  String? _signedIn;
+
   Future<void> load() async {
     _dir = await getApplicationDocumentsDirectory();
     if (await _file.exists()) {
       try {
-        final raw = jsonDecode(await _file.readAsString()) as List;
-        list.addAll(raw.map((p) => Profile.fromJson(p as Map<String, dynamic>)));
+        restore(jsonDecode(await _file.readAsString()));
       } catch (_) {}
     }
-    // A single profile without a PIN opens straight away.
-    if (list.length == 1 && !list.first.hasPin) await select(list.first);
+    // Whoever was signed in stays signed in until they sign out themselves:
+    // the PIN is asked only when choosing an account on the start screen.
+    final remembered = list.where((p) => p.id == _signedIn).firstOrNull;
+    if (remembered != null) {
+      await select(remembered);
+    } else if (list.length == 1 && !list.first.hasPin) {
+      await select(list.first);
+    }
   }
 
-  Future<void> _save() => _file.writeAsString(jsonEncode([for (final p in list) p.toJson()]));
+  /// Reads the stored accounts. Older versions stored a bare list.
+  @visibleForTesting
+  void restore(dynamic raw) {
+    final rows = raw is List ? raw : (raw['profiles'] as List? ?? const []);
+    list.addAll(rows.map((p) => Profile.fromJson(p as Map<String, dynamic>)));
+    if (raw is Map) _signedIn = raw['signedIn'] as String?;
+  }
+
+  @visibleForTesting
+  Map<String, dynamic> snapshot() => {'profiles': [for (final p in list) p.toJson()], 'signedIn': _signedIn};
+
+  @visibleForTesting
+  String? get signedInId => _signedIn;
+
+  Future<void> _save() => _file.writeAsString(jsonEncode(snapshot()));
 
   /// Creates a profile and signs into it. The very first profile takes over
   /// any collection made before profiles existed.
@@ -78,6 +100,8 @@ class Profiles extends ChangeNotifier {
     await player.reset();
     await library.open(p.id);
     current = p;
+    _signedIn = p.id;
+    await _save();
     notifyListeners();
   }
 
@@ -115,6 +139,8 @@ class Profiles extends ChangeNotifier {
   Future<void> signOut() async {
     await player.reset();
     current = null;
+    _signedIn = null;
+    await _save();
     notifyListeners();
   }
 

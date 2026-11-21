@@ -229,6 +229,8 @@ class Library extends ChangeNotifier {
   /// new tracks, or -1 when access to music was not granted. With
   /// [ask] false the permission dialog is never shown.
   Future<int> scanDevice({bool ask = true}) async {
+    // Only Android has a system index of music files.
+    if (!Platform.isAndroid) return -1;
     var granted = await Permission.audio.isGranted || await Permission.storage.isGranted;
     if (!granted && ask) {
       final audio = await Permission.audio.request();

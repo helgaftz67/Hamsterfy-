@@ -233,6 +233,26 @@ void main() {
       expect(copy.canSave, isFalse);
     });
 
+    test('sign-in is remembered until sign-out; old account files still load', () {
+      final profiles = Profiles(Library(), FakePlayer());
+      profiles.restore([
+        {'id': 'main', 'name': 'Оля', 'pinHash': Profiles.hashPin('main', '1234')},
+      ]);
+      expect(profiles.list.single.name, 'Оля');
+      expect(profiles.signedInId, isNull);
+      final next = Profiles(Library(), FakePlayer())
+        ..restore({
+          'profiles': [
+            {'id': 'main', 'name': 'Оля', 'pinHash': 'x'},
+            {'id': 'p2', 'name': 'Дима'},
+          ],
+          'signedIn': 'p2',
+        });
+      expect(next.signedInId, 'p2');
+      expect(next.snapshot()['signedIn'], 'p2');
+      expect((next.snapshot()['profiles'] as List).length, 2);
+    });
+
     test('snapshot round-trips favourites and plays', () {
       final lib = seeded();
       lib.favorites.add('t1');

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../main.dart';
 import '../profiles.dart';
+import 'aurora.dart';
 import 'theme.dart';
 
 Color profileColor(Profile p) => HSLColor.fromAHSL(1, (p.name.hashCode % 360).abs().toDouble(), .5, .55).toColor();
@@ -43,7 +44,8 @@ class ProfileAvatar extends StatelessWidget {
   }
 }
 
-/// First screen: pick who is listening, or create an account.
+/// First screen: a welcome for a new install, or "who is listening" when
+/// accounts already exist.
 class ProfileGate extends StatelessWidget {
   const ProfileGate({super.key});
 
@@ -55,143 +57,457 @@ class ProfileGate extends StatelessWidget {
     await profiles.select(p);
   }
 
+  void _create(BuildContext context) =>
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateAccountPage()));
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: ListenableBuilder(
-          listenable: profiles,
-          builder: (context, _) {
-            if (profiles.list.isEmpty) return const _CreateForm(first: true);
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-              children: [
-                const Text('Кто слушает?', style: kTitle),
-                const SizedBox(height: 6),
-                const Text('У каждого аккаунта своя медиатека, избранное и рекомендации.',
-                    style: TextStyle(color: kMuted)),
-                const SizedBox(height: 24),
-                for (final p in profiles.list)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Material(
-                      color: kSurface,
-                      borderRadius: BorderRadius.circular(14),
-                      child: ListTile(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        leading: ProfileAvatar(p, size: 44),
-                        title: Text(p.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                        trailing: Icon(p.hasPin ? Icons.lock_outline : Icons.chevron_right, color: kMuted),
-                        onTap: () => _enter(context, p),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => Scaffold(appBar: AppBar(), body: const SafeArea(child: _CreateForm(first: false))),
-                    ),
-                  ),
-                  icon: const Icon(Icons.person_add_alt),
-                  label: const Text('Создать аккаунт'),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const AuroraBackground(fadeTo: kBg),
+          SafeArea(
+            child: ListenableBuilder(
+              listenable: profiles,
+              builder: (context, _) => profiles.list.isEmpty ? _welcome(context) : _picker(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _welcome(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Expanded(flex: 5, child: Center(child: _Mascot(size: 190))),
+          const Text('Музыка,\nкоторая ваша',
+              style: TextStyle(fontSize: 44, height: 1.02, fontWeight: FontWeight.w800, letterSpacing: -1.6)),
+          const SizedBox(height: 14),
+          const Text('Ищите треки, собирайте плейлисты и слушайте без интернета. Два хомяка присмотрят за коллекцией.',
+              style: TextStyle(color: kMuted, fontSize: 16, height: 1.4, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 22),
+          const Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Perk(Icons.search_rounded, 'Поиск'),
+              _Perk(Icons.graphic_eq_rounded, 'Моя волна'),
+              _Perk(Icons.download_done_rounded, 'Офлайн'),
+              _Perk(Icons.sensors_rounded, 'Радио'),
+            ],
+          ),
+          const Spacer(),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18)),
+              onPressed: () => _create(context),
+              child: const Text('Начать', style: TextStyle(fontSize: 17)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Center(
+            child: Text('Без почты и паролей. Аккаунт живёт на этом устройстве.',
+                textAlign: TextAlign.center, style: TextStyle(color: kMuted, fontSize: 12.5)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _picker(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
+      children: [
+        const Align(alignment: Alignment.centerLeft, child: _Mascot(size: 84)),
+        const SizedBox(height: 26),
+        const Text('Кто слушает?',
+            style: TextStyle(fontSize: 40, height: 1.05, fontWeight: FontWeight.w800, letterSpacing: -1.4)),
+        const SizedBox(height: 8),
+        const Text('У каждого своя медиатека, избранное и рекомендации.',
+            style: TextStyle(color: kMuted, fontSize: 15.5, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 30),
+        Wrap(
+          spacing: 18,
+          runSpacing: 22,
+          children: [
+            for (final p in profiles.list)
+              _Person(
+                label: p.name,
+                onTap: () => _enter(context, p),
+                badge: p.hasPin ? Icons.lock_rounded : null,
+                child: ProfileAvatar(p, size: 92),
+              ),
+            _Person(
+              label: 'Добавить',
+              onTap: () => _create(context),
+              child: Container(
+                width: 92,
+                height: 92,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: .08),
+                  border: Border.all(color: Colors.white.withValues(alpha: .28), width: 1.5),
                 ),
-              ],
-            );
-          },
+                child: const Icon(Icons.add_rounded, size: 36, color: kInk),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The app icon, gently bobbing.
+class _Mascot extends StatefulWidget {
+  const _Mascot({required this.size});
+  final double size;
+
+  @override
+  State<_Mascot> createState() => _MascotState();
+}
+
+class _MascotState extends State<_Mascot> with SingleTickerProviderStateMixin {
+  late final _bob = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _bob.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.size;
+    return AnimatedBuilder(
+      animation: _bob,
+      builder: (_, child) {
+        final t = Curves.easeInOut.transform(_bob.value);
+        return Transform.translate(
+          offset: Offset(0, -s * .05 * t),
+          child: Transform.rotate(angle: (t - .5) * .07, child: child),
+        );
+      },
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(s * .24),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .35), blurRadius: s * .22, offset: Offset(0, s * .1))],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(s * .24),
+          child: Image.asset('assets/brand/icon.png', width: s, height: s),
         ),
       ),
     );
   }
 }
 
-class _CreateForm extends StatefulWidget {
-  const _CreateForm({required this.first});
-  final bool first;
+class _Perk extends StatelessWidget {
+  const _Perk(this.icon, this.label);
+  final IconData icon;
+  final String label;
 
   @override
-  State<_CreateForm> createState() => _CreateFormState();
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 7, 14, 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withValues(alpha: .14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 17, color: kAccent),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+        ],
+      ),
+    );
+  }
 }
 
-class _CreateFormState extends State<_CreateForm> {
-  final _form = GlobalKey<FormState>();
+class _Person extends StatelessWidget {
+  const _Person({required this.label, required this.onTap, required this.child, this.badge});
+  final String label;
+  final VoidCallback onTap;
+  final Widget child;
+  final IconData? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: SizedBox(
+          width: 104,
+          child: Column(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  child,
+                  if (badge != null)
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(color: kBg, shape: BoxShape.circle, border: Border.all(color: kSunken)),
+                        child: Icon(badge, size: 14, color: kMuted),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Registration: a name, an optional four-digit PIN, and a live preview of
+/// the avatar the account will get.
+class CreateAccountPage extends StatefulWidget {
+  const CreateAccountPage({super.key});
+
+  @override
+  State<CreateAccountPage> createState() => _CreateAccountPageState();
+}
+
+class _CreateAccountPageState extends State<CreateAccountPage> {
   final _name = TextEditingController();
   final _pin = TextEditingController();
+  final _pinFocus = FocusNode();
+  bool _usePin = false;
   bool _busy = false;
+  String? _nameError;
+  String? _pinError;
+
+  @override
+  void initState() {
+    super.initState();
+    _name.addListener(() => setState(() => _nameError = null));
+    _pin.addListener(() => setState(() => _pinError = null));
+  }
 
   @override
   void dispose() {
     _name.dispose();
     _pin.dispose();
+    _pinFocus.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    if (!_form.currentState!.validate()) return;
+    final name = _name.text.trim();
+    String? nameError, pinError;
+    if (name.isEmpty) {
+      nameError = 'Введите имя';
+    } else if (profiles.list.any((p) => p.name.toLowerCase() == name.toLowerCase())) {
+      nameError = 'Такой аккаунт уже есть. Выберите другое имя';
+    }
+    if (_usePin && _pin.text.length != 4) pinError = 'Введите все 4 цифры или выключите ПИН-код';
+    if (nameError != null || pinError != null) {
+      setState(() {
+        _nameError = nameError;
+        _pinError = pinError;
+      });
+      return;
+    }
     setState(() => _busy = true);
     final nav = Navigator.of(context);
-    await profiles.create(_name.text, pin: _pin.text);
-    if (!widget.first && nav.canPop()) nav.pop();
+    await profiles.create(name, pin: _usePin ? _pin.text : null);
+    if (nav.canPop()) nav.pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Form(
-      key: _form,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(24, widget.first ? 48 : 8, 24, 24),
+    final name = _name.text.trim();
+    final preview = Profile(id: 'preview', name: name);
+    return Scaffold(
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          if (widget.first) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: Image.asset('assets/brand/icon.png', width: 96, height: 96),
+          const AuroraBackground(fadeTo: kBg, fadeFrom: .12),
+          SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(28, 8, 28, 28),
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    tooltip: 'Назад',
+                    onPressed: () => Navigator.maybePop(context),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: name.isEmpty
+                        ? Container(
+                            key: const ValueKey('empty'),
+                            width: 112,
+                            height: 112,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: .10),
+                              border: Border.all(color: Colors.white.withValues(alpha: .28), width: 1.5),
+                            ),
+                            child: const Icon(Icons.person_rounded, size: 52, color: kInk),
+                          )
+                        : ProfileAvatar(preview, key: ValueKey(profileColor(preview)), size: 112),
+                  ),
+                ),
+                const SizedBox(height: 26),
+                const Text('Как вас зовут?',
+                    style: TextStyle(fontSize: 38, height: 1.05, fontWeight: FontWeight.w800, letterSpacing: -1.3)),
+                const SizedBox(height: 8),
+                const Text('Имя увидят только те, кто берёт в руки это устройство.',
+                    style: TextStyle(color: kMuted, fontSize: 15.5, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _name,
+                  autofocus: true,
+                  maxLength: 24,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.done,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                  decoration: InputDecoration(
+                    hintText: 'Имя',
+                    hintStyle: TextStyle(color: kMuted.withValues(alpha: .7), fontWeight: FontWeight.w600),
+                    errorText: _nameError,
+                    counterText: '',
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: .07),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: kAccent, width: 1.5)),
+                  ),
+                  onSubmitted: (_) => _usePin ? _pinFocus.requestFocus() : _submit(),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 6, 10, 6),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .07), borderRadius: BorderRadius.circular(18)),
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Защитить ПИН-кодом', style: TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: const Text('Спросим только при выборе аккаунта'),
+                        value: _usePin,
+                        onChanged: (v) {
+                          setState(() => _usePin = v);
+                          if (v) _pinFocus.requestFocus();
+                        },
+                      ),
+                      if (_usePin) ...[
+                        _PinBoxes(controller: _pin, focusNode: _pinFocus, onDone: _submit),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(0, 8, 10, 10),
+                          child: Text(_pinError ?? 'Восстановить забытый ПИН-код нельзя.',
+                              style: TextStyle(
+                                  color: _pinError == null ? kMuted : const Color(0xFFFF7A8A), fontSize: 12.5)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 26),
+                FilledButton(
+                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18)),
+                  onPressed: _busy ? null : _submit,
+                  child: const Text('Создать аккаунт', style: TextStyle(fontSize: 17)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Four digit cells backed by one hidden text field.
+class _PinBoxes extends StatelessWidget {
+  const _PinBoxes({required this.controller, required this.focusNode, required this.onDone});
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: focusNode.requestFocus,
+      child: Stack(
+        alignment: Alignment.centerLeft,
+        children: [
+          // The real input: invisible, but it owns the keyboard and the value.
+          Opacity(
+            opacity: 0,
+            child: SizedBox(
+              height: 58,
+              child: TextField(
+                controller: controller,
+                focusNode: focusNode,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(counterText: '', labelText: 'ПИН-код, 4 цифры'),
+                onSubmitted: (_) => onDone(),
               ),
             ),
-            const SizedBox(height: 20),
-          ],
-          Text(widget.first ? 'Добро пожаловать в Hamsterfy' : 'Новый аккаунт', style: kTitle),
-          const SizedBox(height: 6),
-          const Text('Аккаунт хранится только на этом телефоне. Почта и интернет не нужны.',
-              style: TextStyle(color: kMuted)),
-          const SizedBox(height: 24),
-          TextFormField(
-            controller: _name,
-            autofocus: true,
-            textCapitalization: TextCapitalization.words,
-            maxLength: 24,
-            decoration: const InputDecoration(labelText: 'Имя', border: OutlineInputBorder()),
-            validator: (v) {
-              final name = (v ?? '').trim();
-              if (name.isEmpty) return 'Введите имя';
-              if (profiles.list.any((p) => p.name.toLowerCase() == name.toLowerCase())) {
-                return 'Такой аккаунт уже есть. Выберите другое имя';
-              }
-              return null;
-            },
           ),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: _pin,
-            keyboardType: TextInputType.number,
-            obscureText: true,
-            maxLength: 4,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: 'ПИН-код, 4 цифры (необязательно)',
-              helperText: 'Защищает вход в аккаунт. Восстановить забытый ПИН нельзя.',
-              helperMaxLines: 2,
-              border: OutlineInputBorder(),
+          IgnorePointer(
+            child: ListenableBuilder(
+              listenable: Listenable.merge([controller, focusNode]),
+              builder: (context, _) {
+                final typed = controller.text.length;
+                return Row(
+                  children: [
+                    for (var i = 0; i < 4; i++)
+                      Container(
+                        width: 52,
+                        height: 58,
+                        margin: const EdgeInsets.only(right: 10),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: kBg.withValues(alpha: .55),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: focusNode.hasFocus && i == typed.clamp(0, 3) ? kAccent : Colors.white24,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: i < typed
+                            ? Container(
+                                width: 12, height: 12, decoration: const BoxDecoration(color: kInk, shape: BoxShape.circle))
+                            : null,
+                      ),
+                  ],
+                );
+              },
             ),
-            validator: (v) => (v == null || v.isEmpty || v.length == 4) ? null : 'Нужно ровно 4 цифры или пустое поле',
-          ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _busy ? null : _submit,
-            child: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Создать аккаунт')),
           ),
         ],
       ),

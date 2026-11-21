@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'audius.dart';
@@ -12,7 +15,12 @@ import 'songs.dart';
 import 'ui/pages.dart';
 import 'ui/player_ui.dart';
 import 'ui/profile_ui.dart';
+import 'ui/splash.dart';
 import 'ui/theme.dart';
+
+/// Phones get system media controls and the on-device music scan; the
+/// desktop builds share everything else.
+final bool isMobile = Platform.isAndroid || Platform.isIOS;
 
 final library = Library();
 final catalog = Catalog();
@@ -24,16 +32,21 @@ late final Profiles profiles;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'dev.hamsterfy.audio',
-    androidNotificationChannelName: 'Воспроизведение',
-    androidNotificationOngoing: true,
-    // White silhouette shown in the status bar while music plays.
-    androidNotificationIcon: 'drawable/ic_stat_music',
-  );
+  if (isMobile) {
+    // Lock-screen and notification controls.
+    await JustAudioBackground.init(
+      androidNotificationChannelId: 'dev.hamsterfy.audio',
+      androidNotificationChannelName: 'Воспроизведение',
+      androidNotificationOngoing: true,
+      // White silhouette shown in the status bar while music plays.
+      androidNotificationIcon: 'drawable/ic_stat_music',
+    );
+  } else {
+    // Windows and Linux play through libmpv.
+    JustAudioMediaKit.ensureInitialized();
+  }
   player = Player(library);
   profiles = Profiles(library, player);
-  await profiles.load();
   runApp(const HamsterfyApp());
 }
 
@@ -46,13 +59,22 @@ class HamsterfyApp extends StatelessWidget {
       title: 'Hamsterfy',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      home: ListenableBuilder(
-        listenable: profiles,
-        builder: (context, _) {
-          final p = profiles.current;
-          // A fresh Shell per account, so no screen keeps the previous one's data.
-          return p == null ? const ProfileGate() : Shell(key: ValueKey(p.id));
-        },
+      // In a wide desktop window the app stays a centred column.
+      builder: (context, child) => ColoredBox(
+        color: kBg,
+        child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: child)),
+      ),
+      home: SplashScreen(
+        // Accounts and the library load while the splash plays.
+        load: profiles.load,
+        child: ListenableBuilder(
+          listenable: profiles,
+          builder: (context, _) {
+            final p = profiles.current;
+            // A fresh Shell per account, so no screen keeps the previous one's data.
+            return p == null ? const ProfileGate() : Shell(key: ValueKey(p.id));
+          },
+        ),
       ),
     );
   }
@@ -75,7 +97,7 @@ class _ShellState extends State<Shell> {
     super.initState();
     // Android 13+ shows the playback notification and its status-bar icon
     // only after the user allows notifications.
-    Permission.notification.request();
+    if (Platform.isAndroid) Permission.notification.request();
   }
 
   @override

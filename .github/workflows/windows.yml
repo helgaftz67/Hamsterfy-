@@ -1,0 +1,27 @@
+name: Windows build
+
+on:
+  push:
+    branches:
+      - main
+      - claude/music-app-design-refs-ryxi1e
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.1
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+      - run: flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hamsterfy-windows
+          path: build/windows/x64/runner/Release
+          if-no-files-found: error

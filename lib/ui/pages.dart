@@ -1,11 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../library.dart';
 import '../main.dart';
 import '../models.dart';
+import 'aurora.dart';
 import 'profile_ui.dart';
 import 'theme.dart';
 
@@ -107,7 +106,7 @@ class _HomePageState extends State<HomePage> {
                     const Padding(
                       padding: EdgeInsets.fromLTRB(24, 14, 24, 4),
                       child: Text(
-                        'Волна собирается из вашей коллекции. Откройте Медиатеку и найдите музыку на телефоне.',
+                        'Волна собирается из вашей коллекции. Добавьте музыку в Медиатеке или отметьте треки в Поиске.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: kMuted),
                       ),
@@ -264,7 +263,7 @@ class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
                     RepaintBoundary(
                       child: AnimatedBuilder(
                         animation: _drift,
-                        builder: (_, _) => CustomPaint(painter: _WavePainter(_drift.value, active ? 1.0 : .55)),
+                        builder: (_, _) => CustomPaint(painter: AuroraPainter(_drift.value, active ? 1.0 : .55)),
                       ),
                     ),
                     Padding(
@@ -311,46 +310,6 @@ class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
       ),
     );
   }
-}
-
-/// Soft blobs of colour drifting over a deep violet ground.
-class _WavePainter extends CustomPainter {
-  _WavePainter(this.t, this.energy);
-  final double t;
-  final double energy;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF2B1D6E));
-    const colors = [Color(0xFF8E6BFF), Color(0xFFFF7EB6), Color(0xFFFFB938), Color(0xFF4AC7FF)];
-    for (var i = 0; i < colors.length; i++) {
-      final a = (t + i / colors.length) * 2 * math.pi;
-      final center = Offset(
-        size.width * (.5 + .42 * math.cos(a + i * 1.3)),
-        size.height * (.5 + .46 * math.sin(a * (i.isEven ? 1 : -1) + i)),
-      );
-      final radius = size.width * (.34 + .08 * math.sin(a * 2 + i)) * (.85 + .3 * energy);
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()
-          ..color = colors[i].withValues(alpha: .50 + .25 * energy)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * .14),
-      );
-    }
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0x55000000), Color(0x00000000)],
-        ).createShader(Offset.zero & size),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_WavePainter old) => old.t != t || old.energy != energy;
 }
 
 /// Compact shortcut tile, two per row.
@@ -1035,10 +994,11 @@ class _LibraryPageState extends State<LibraryPage> {
                           child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
                         )
                       else ...[
-                        IconButton(
-                            tooltip: 'Найти музыку на телефоне',
-                            onPressed: _scan,
-                            icon: const Icon(Icons.phonelink_setup)),
+                        if (isMobile)
+                          IconButton(
+                              tooltip: 'Найти музыку на телефоне',
+                              onPressed: _scan,
+                              icon: const Icon(Icons.phonelink_setup)),
                         IconButton(
                             tooltip: 'Добавить файлы вручную', onPressed: _import, icon: const Icon(Icons.add)),
                       ],
@@ -1125,11 +1085,17 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Widget _empty() => switch (_filter) {
-        _Filter.all => _Message(
-            'Здесь появится ваша музыка. Приложение может само найти все треки на телефоне.',
-            action: 'Найти музыку на телефоне',
-            onAction: _scan,
-          ),
+        _Filter.all => isMobile
+            ? _Message(
+                'Здесь появится ваша музыка. Приложение может само найти все треки на телефоне.',
+                action: 'Найти музыку на телефоне',
+                onAction: _scan,
+              )
+            : _Message(
+                'Здесь появится ваша музыка. Добавьте файлы с компьютера или отметьте треки в Поиске.',
+                action: 'Добавить файлы',
+                onAction: _import,
+              ),
         _Filter.favorites => const _Message('Отмечайте треки и станции сердечком, и они соберутся здесь.'),
         _Filter.stations => const _Message('Откройте Радио на Главной и отметьте станцию сердечком, она появится здесь.'),
         _ => const _Message('Треки с телефона и скачанные из каталога играют без интернета.'),
