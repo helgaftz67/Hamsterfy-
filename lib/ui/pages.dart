@@ -504,6 +504,10 @@ class _ShelfCard extends StatelessWidget {
 
 // ------------------------------------------------------------- Catalog ----
 
+/// Where the search tab looks: whole tracks on Audius, previews of every
+/// song, or free releases on the Internet Archive.
+enum _Source { audius, previews, free }
+
 class CatalogPage extends StatefulWidget {
   const CatalogPage({super.key});
 
@@ -515,15 +519,19 @@ class CatalogPage extends StatefulWidget {
 /// catalog where whole releases can be played and downloaded.
 class _CatalogPageState extends State<CatalogPage> {
   final _query = TextEditingController();
-  bool _world = true;
+  _Source _source = _Source.audius;
   Future<List<Track>>? _songs;
   Future<List<Album>>? _albums;
 
   void _search() => setState(() {
-        if (_world) {
-          _songs = _query.text.trim().isEmpty ? null : songs.search(_query.text);
-        } else {
-          _albums = catalog.search(_query.text);
+        final q = _query.text;
+        switch (_source) {
+          case _Source.audius:
+            _songs = q.trim().isEmpty ? null : audius.search(q);
+          case _Source.previews:
+            _songs = q.trim().isEmpty ? null : songs.search(q);
+          case _Source.free:
+            _albums = catalog.search(q);
         }
       });
 
@@ -547,20 +555,25 @@ class _CatalogPageState extends State<CatalogPage> {
             ),
             _SearchField(
                 controller: _query,
-                hint: _world ? 'Песня или исполнитель' : 'Исполнитель, релиз или жанр',
+                hint: _source == _Source.free ? 'Исполнитель, релиз или жанр' : 'Песня или исполнитель',
                 onSearch: _search),
-            Padding(
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
               child: Row(
                 children: [
-                  for (final (world, label) in [(true, 'Все песни'), (false, 'Свободная музыка')])
+                  for (final (source, label) in [
+                    (_Source.audius, 'Целиком · Audius'),
+                    (_Source.previews, 'Все песни · 30 сек'),
+                    (_Source.free, 'Свободные релизы'),
+                  ])
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: ChoiceChip(
                         label: Text(label),
-                        selected: _world == world,
+                        selected: _source == source,
                         onSelected: (_) {
-                          _world = world;
+                          _source = source;
                           _search();
                         },
                       ),
@@ -568,7 +581,7 @@ class _CatalogPageState extends State<CatalogPage> {
                 ],
               ),
             ),
-            Expanded(child: _world ? _songList() : _albumList()),
+            Expanded(child: _source == _Source.free ? _albumList() : _songList()),
           ],
         ),
       ),
@@ -576,9 +589,11 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Widget _songList() {
+    final full = _source == _Source.audius;
     if (_songs == null) {
-      return const _Message(
-          'Найдётся любая песня. Трек из вашей медиатеки сыграет целиком, остальные — 30-секундным фрагментом со ссылкой на полную версию.');
+      return _Message(full
+          ? 'Введите название трека или имя исполнителя. Здесь музыка с Audius, которую артисты выложили сами: она играет целиком.'
+          : 'Найдётся любая песня. Трек из вашей медиатеки сыграет целиком, остальные — 30-секундным фрагментом со ссылкой на полную версию.');
     }
     return ListenableBuilder(
       listenable: library,
@@ -589,21 +604,30 @@ class _CatalogPageState extends State<CatalogPage> {
           if (snap.hasError) {
             return _Message('Поиск не отвечает. Проверьте подключение к интернету.', action: 'Повторить', onAction: _search);
           }
-          // Songs the user already owns play in full instead of the preview.
           final seen = <String>{};
-          final found = [
-            for (final t in snap.data ?? const <Track>[])
-              if (seen.add((library.match(t) ?? t).id)) library.match(t) ?? library.tracks[t.id] ?? t,
-          ];
-          final own = Library.filter(library.songs, _query.text).where((t) => seen.add(t.id)).toList();
-          final all = [...own, ...found];
+          final List<Track> all;
+          if (full) {
+            // Saved copies replace search rows, so likes and downloads show.
+            all = [for (final t in snap.data ?? const <Track>[]) if (seen.add(t.id)) library.tracks[t.id] ?? t];
+          } else {
+            // Songs the user already owns play in full instead of the preview.
+            final found = [
+              for (final t in snap.data ?? const <Track>[])
+                if (seen.add((library.match(t) ?? t).id)) library.match(t) ?? library.tracks[t.id] ?? t,
+            ];
+            final own = Library.filter(library.songs, _query.text).where((t) => seen.add(t.id)).toList();
+            all = [...own, ...found];
+          }
           if (all.isEmpty) {
-            return const _Message('Ничего не нашлось. Проверьте написание или попробуйте только имя исполнителя.');
+            return _Message(full
+                ? 'На Audius такого нет. Проверьте написание или поищите во вкладке «Все песни».'
+                : 'Ничего не нашлось. Проверьте написание или попробуйте только имя исполнителя.');
           }
           return ListView.builder(
             padding: const EdgeInsets.only(bottom: 24),
             itemCount: all.length,
-            itemBuilder: (context, i) => TrackTile(all[i], onTap: () => player.playAll(all, start: i)),
+            itemBuilder: (context, i) =>
+                TrackTile(all[i], playButton: full, onTap: () => player.playAll(all, start: i)),
           );
         },
       ),
@@ -621,7 +645,7 @@ class _CatalogPageState extends State<CatalogPage> {
         final albums = snap.data ?? const [];
         if (albums.isEmpty) {
           return const _Message(
-              'В свободном каталоге этого нет: здесь релизы под свободными лицензиями и концертные записи. Популярных артистов ищите во вкладке «Все песни».');
+              'В свободном каталоге этого нет: здесь релизы под свободными лицензиями и концертные записи. Попробуйте вкладки «Целиком · Audius» или «Все песни».');
         }
         return ListView.builder(
           padding: const EdgeInsets.only(bottom: 24),

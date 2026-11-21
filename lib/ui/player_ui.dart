@@ -255,6 +255,17 @@ class PlayerPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 14),
                           if (t.isRadio) const _LiveBadge() else const _Seek(),
+                          if (t.isAudius && t.link != null)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                style: TextButton.styleFrom(
+                                    foregroundColor: Colors.white70, padding: EdgeInsets.zero, minimumSize: const Size(0, 32)),
+                                onPressed: () => openLink(context, t.link!),
+                                icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                                label: const Text('Музыка с Audius', style: TextStyle(fontSize: 12.5)),
+                              ),
+                            ),
                           if (t.isPreview && t.link != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 10),

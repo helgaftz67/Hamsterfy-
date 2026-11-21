@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'audius.dart';
 import 'catalog.dart';
 import 'library.dart';
 import 'player.dart';
@@ -17,6 +18,7 @@ final library = Library();
 final catalog = Catalog();
 final radio = RadioDirectory();
 final songs = SongSearch();
+final audius = Audius();
 late final Player player;
 late final Profiles profiles;
 

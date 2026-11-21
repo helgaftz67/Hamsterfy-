@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hamsterfy/audius.dart';
 import 'package:hamsterfy/catalog.dart';
 import 'package:hamsterfy/library.dart';
 import 'package:hamsterfy/models.dart';
@@ -186,6 +189,48 @@ void main() {
       expect(lib.favoriteTracks.single.id, 'it:7');
       final copy = Library()..restore(lib.snapshot());
       expect(copy.tracks['it:7']!.link, 'https://music/x');
+    });
+
+    test('audius: only freely streamable tracks get a stream address', () {
+      Map<String, dynamic> row(String id, Map<String, dynamic> extra) => {
+            'id': id,
+            'title': ' Song $id ',
+            'duration': 125,
+            'permalink': '/artist/song-$id',
+            'user': {'name': 'Artist', 'handle': 'artist'},
+            'artwork': {'150x150': 'https://c/150.jpg', '480x480': 'https://c/480.jpg'},
+            'is_streamable': true,
+            'is_stream_gated': false,
+            'is_delete': false,
+            'is_unlisted': false,
+            'access': {'stream': true, 'download': true},
+            'allowed_api_keys': null,
+            'is_downloadable': false,
+            ...extra,
+          };
+      final body = '{"data":${jsonEncode([
+            row('ok', {'is_downloadable': true}),
+            row('notStreamable', {'is_streamable': false}),
+            row('gated', {'is_stream_gated': true}),
+            row('noAccess', {'access': {'stream': false}}),
+            row('keyOnly', {'allowed_api_keys': ['abc']}),
+            row('deleted', {'is_delete': true}),
+          ])}}';
+      final tracks = Audius.parse(body);
+      expect(tracks.length, 6);
+      final ok = tracks.first;
+      expect(ok.id, 'au:ok');
+      expect(ok.title, 'Song ok');
+      expect(ok.artist, 'Artist');
+      expect(ok.durationMs, 125000);
+      expect(ok.art, 'https://c/480.jpg');
+      expect(ok.url, 'https://api.audius.co/v1/tracks/ok/stream?app_name=Hamsterfy');
+      expect(ok.link, 'https://audius.co/artist/song-ok');
+      expect(ok.canSave, isTrue);
+      expect(ok.isUnavailable, isFalse);
+      expect(tracks.skip(1).every((t) => t.url == null && t.isUnavailable), isTrue);
+      final copy = Track.fromJson(tracks[1].toJson());
+      expect(copy.canSave, isFalse);
     });
 
     test('snapshot round-trips favourites and plays', () {

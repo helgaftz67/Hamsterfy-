@@ -323,7 +323,7 @@ class Library extends ChangeNotifier {
   /// Saves a catalog track to the device for offline listening. With [auto]
   /// the file belongs to the listening cache and may be evicted later.
   Future<void> download(Track t, {bool auto = false}) async {
-    if (t.isLocal || t.isRadio || t.isPreview || t.url == null || downloading.containsKey(t.id)) return;
+    if (t.isLocal || t.isRadio || t.isPreview || !t.canSave || t.url == null || downloading.containsKey(t.id)) return;
     downloading[t.id] = 0;
     notifyListeners();
     final dest = File('$_music/${_safe(t.id)}.mp3');
@@ -421,7 +421,7 @@ class Library extends ChangeNotifier {
   /// Called when a track starts playing: saves it to the cache and makes
   /// room if the cache is over its limit. [playingId] is never evicted.
   Future<void> cacheAfterPlay(Track t) async {
-    if (!autoCache || t.isLocal || t.isRadio || t.isPreview || t.url == null) return;
+    if (!autoCache || t.isLocal || t.isRadio || t.isPreview || !t.canSave || t.url == null) return;
     try {
       await download(t, auto: true);
     } catch (_) {

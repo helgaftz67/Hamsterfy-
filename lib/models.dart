@@ -13,6 +13,7 @@ class Track {
     this.auto = false,
     this.size = 0,
     this.link,
+    this.canSave = true,
     int? addedAt,
   }) : addedAt = addedAt ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -47,6 +48,15 @@ class Track {
   /// A live internet radio station: an endless stream that cannot be saved.
   bool get isRadio => id.startsWith('radio:');
 
+  /// Whether the app may keep an offline copy (cache or download).
+  final bool canSave;
+
+  /// A track streamed in full from Audius.
+  bool get isAudius => id.startsWith('au:');
+
+  /// Listed for information only: there is nothing the app may play.
+  bool get isUnavailable => path == null && url == null;
+
   /// A song found by the world search: only its 30-second preview plays.
   bool get isPreview => id.startsWith('it:');
 
@@ -66,6 +76,7 @@ class Track {
         'auto': auto,
         'size': size,
         'link': link,
+        'canSave': canSave,
       };
 
   factory Track.fromJson(Map<String, dynamic> j) => Track(
@@ -81,6 +92,7 @@ class Track {
         auto: j['auto'] as bool? ?? false,
         size: j['size'] as int? ?? 0,
         link: j['link'] as String?,
+        canSave: j['canSave'] as bool? ?? true,
       );
 }
 

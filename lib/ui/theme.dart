@@ -216,7 +216,8 @@ class Cover extends StatelessWidget {
 
 /// One row in any track list: cover, title, artist, state and a menu.
 class TrackTile extends StatelessWidget {
-  const TrackTile(this.track, {super.key, required this.onTap, this.playlist, this.selected, this.onLongPress});
+  const TrackTile(this.track,
+      {super.key, required this.onTap, this.playlist, this.selected, this.onLongPress, this.playButton = false});
   final Track track;
   final VoidCallback onTap;
 
@@ -226,6 +227,10 @@ class TrackTile extends StatelessWidget {
   /// Non-null while the list is in selection mode: whether this row is ticked.
   final bool? selected;
   final VoidCallback? onLongPress;
+
+  /// Shows an explicit play button on rows that can be played. Rows that
+  /// cannot are dimmed and get no button.
+  final bool playButton;
 
   @override
   Widget build(BuildContext context) {
@@ -237,7 +242,7 @@ class TrackTile extends StatelessWidget {
         final progress = library.downloading[t.id];
         final fav = library.isFavorite(t);
         return ListTile(
-          onTap: onTap,
+          onTap: t.isUnavailable ? null : onTap,
           onLongPress: onLongPress,
           selected: selected ?? false,
           selectedTileColor: kAccent.withValues(alpha: .10),
@@ -256,7 +261,10 @@ class TrackTile extends StatelessWidget {
           title: Text(t.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: isCurrent ? kAccent : kInk, fontWeight: FontWeight.w600, fontSize: 15.5)),
+              style: TextStyle(
+                  color: t.isUnavailable ? kMuted : (isCurrent ? kAccent : kInk),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15.5)),
           subtitle: Row(
             children: [
               if (t.isPreview) ...[
@@ -273,7 +281,10 @@ class TrackTile extends StatelessWidget {
                 Icon(t.auto ? Icons.cached : Icons.download_done, size: 14, color: kAmber),
                 const SizedBox(width: 4),
               ],
-              Expanded(child: Text(t.artist, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              Expanded(
+                child: Text(t.isUnavailable ? '${t.artist} · нет свободного прослушивания' : t.artist,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
             ],
           ),
           trailing: selected != null
@@ -281,6 +292,18 @@ class TrackTile extends StatelessWidget {
               : Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (playButton && !t.isUnavailable)
+                IconButton(
+                  tooltip: isCurrent && player.playing ? 'Пауза' : 'Слушать',
+                  onPressed: isCurrent ? player.toggle : onTap,
+                  icon: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: const BoxDecoration(color: kInk, shape: BoxShape.circle),
+                    child: Icon(isCurrent && player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        color: kBg, size: 24),
+                  ),
+                ),
               if (progress != null)
                 SizedBox(
                   width: 20,
@@ -323,10 +346,12 @@ class TrackTile extends StatelessWidget {
                 },
                 itemBuilder: (_) => [
                   PopupMenuItem(value: 'fav', child: Text(fav ? 'Убрать из избранного' : 'В избранное')),
-                  if (t.link != null) const PopupMenuItem(value: 'open', child: Text('Слушать целиком в Apple Music')),
+                  if (t.link != null)
+                    PopupMenuItem(
+                        value: 'open', child: Text(t.isAudius ? 'Открыть в Audius' : 'Слушать целиком в Apple Music')),
                   const PopupMenuItem(value: 'playlist', child: Text('Добавить в плейлист')),
                   if (playlist != null) const PopupMenuItem(value: 'unlist', child: Text('Убрать из плейлиста')),
-                  if (!t.isLocal && !t.isRadio && !t.isPreview && t.url != null && progress == null)
+                  if (!t.isLocal && !t.isRadio && !t.isPreview && t.canSave && t.url != null && progress == null)
                     const PopupMenuItem(value: 'download', child: Text('Скачать')),
                   if (t.isLocal && t.auto) const PopupMenuItem(value: 'pin', child: Text('Сохранить навсегда')),
                   if (t.isLocal && t.url != null)
