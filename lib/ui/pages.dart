@@ -86,7 +86,7 @@ class _HomePageState extends State<HomePage> {
                     const Padding(
                       padding: EdgeInsets.fromLTRB(24, 4, 24, 16),
                       child: Text(
-                        'Волна собирается из вашей коллекции. Откройте Медиатеку и найдите музыку на телефоне или включите радио в Каталоге.',
+                        'Волна собирается из вашей коллекции. Откройте Медиатеку и найдите музыку на телефоне или включите радио ниже.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: kMuted),
                       ),
@@ -118,6 +118,21 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                     ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+                    child: Material(
+                      color: kSurface,
+                      borderRadius: BorderRadius.circular(12),
+                      child: ListTile(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        leading: const Icon(Icons.sensors, color: kAmber),
+                        title: const Text('Радио', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Живой эфир без файлов'),
+                        trailing: const Icon(Icons.chevron_right, color: kMuted),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RadioPage())),
+                      ),
+                    ),
+                  ),
                   if (top.isNotEmpty) ...[
                     _Header('Часто слушаете', onMore: () => _open('Часто слушаете', top)),
                     _TrackShelf(top),
@@ -408,17 +423,9 @@ class CatalogPage extends StatefulWidget {
 
 class _CatalogPageState extends State<CatalogPage> {
   final _query = TextEditingController();
-  bool _radio = true;
-  late Future<List<Track>> _stations = radio.search('');
-  Future<List<Album>>? _albums;
+  late Future<List<Album>> _albums = catalog.search('');
 
-  void _search() => setState(() {
-        if (_radio) {
-          _stations = radio.search(_query.text);
-        } else {
-          _albums = catalog.search(_query.text);
-        }
-      });
+  void _search() => setState(() => _albums = catalog.search(_query.text));
 
   @override
   void dispose() {
@@ -434,111 +441,162 @@ class _CatalogPageState extends State<CatalogPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
+              padding: EdgeInsets.fromLTRB(16, 20, 16, 4),
               child: Text('Каталог', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SegmentedButton<bool>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: true, icon: Icon(Icons.sensors), label: Text('Радио')),
-                  ButtonSegment(value: false, icon: Icon(Icons.album_outlined), label: Text('Свободная музыка')),
-                ],
-                selected: {_radio},
-                onSelectionChanged: (v) {
-                  _radio = v.first;
-                  _search();
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Релизы под свободными лицензиями и концертные записи с Internet Archive.',
+                  style: TextStyle(color: kMuted)),
+            ),
+            _SearchField(controller: _query, hint: 'Исполнитель, релиз или жанр', onSearch: _search),
+            Expanded(
+              child: FutureBuilder<List<Album>>(
+                future: _albums,
+                builder: (context, snap) {
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snap.hasError) {
+                    return _Message('Каталог не отвечает. Проверьте подключение к интернету.',
+                        action: 'Повторить', onAction: _search);
+                  }
+                  final albums = snap.data ?? const [];
+                  if (albums.isEmpty) {
+                    return const _Message(
+                        'В открытом каталоге этого нет. Здесь только свободная музыка и концертные записи. Популярных артистов можно услышать по радио на Главной.');
+                  }
+                  return ListView.builder(
+                    itemCount: albums.length,
+                    itemBuilder: (context, i) {
+                      final a = albums[i];
+                      return ListTile(
+                        leading: Cover(a.art, size: 52, seed: a.id),
+                        title: Text(a.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        trailing: const Icon(Icons.chevron_right, color: kMuted),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumPage(a))),
+                      );
+                    },
+                  );
                 },
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Text(
-                _radio
-                    ? 'Живой эфир станций со всего мира. Перемотать или скачать эфир нельзя.'
-                    : 'Релизы под свободными лицензиями и концертные записи с Internet Archive.',
-                style: const TextStyle(color: kMuted),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: SearchBar(
-                controller: _query,
-                hintText: _radio ? 'Станция или жанр: шансон, rock' : 'Исполнитель, релиз или жанр',
-                leading: const Icon(Icons.search),
-                elevation: const WidgetStatePropertyAll(0),
-                backgroundColor: const WidgetStatePropertyAll(kSurface),
-                textInputAction: TextInputAction.search,
-                onSubmitted: (_) => _search(),
-                trailing: [
-                  if (_query.text.isNotEmpty)
-                    IconButton(
-                      tooltip: 'Очистить',
-                      icon: const Icon(Icons.close),
-                      onPressed: () {
-                        _query.clear();
-                        _search();
-                      },
-                    ),
-                ],
-              ),
-            ),
-            Expanded(child: _radio ? _stationList() : _albumList()),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _stationList() {
-    return FutureBuilder<List<Track>>(
-      future: _stations,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-        if (snap.hasError) {
-          return _Message('Список станций не загрузился. Проверьте подключение к интернету.',
-              action: 'Повторить', onAction: _search);
-        }
-        final stations = snap.data!;
-        if (stations.isEmpty) {
-          return const _Message('Станций с таким названием или жанром нет. Попробуйте другое слово, например «rock» или «ретро».');
-        }
-        return ListView.builder(
-          itemCount: stations.length,
-          itemBuilder: (context, i) => TrackTile(stations[i], onTap: () => player.playAll([stations[i]])),
-        );
-      },
+class _SearchField extends StatelessWidget {
+  const _SearchField({required this.controller, required this.hint, required this.onSearch});
+  final TextEditingController controller;
+  final String hint;
+  final VoidCallback onSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: SearchBar(
+        controller: controller,
+        hintText: hint,
+        leading: const Icon(Icons.search),
+        elevation: const WidgetStatePropertyAll(0),
+        backgroundColor: const WidgetStatePropertyAll(kSurface),
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) => onSearch(),
+        trailing: [
+          ListenableBuilder(
+            listenable: controller,
+            builder: (_, _) => controller.text.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    tooltip: 'Очистить',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      controller.clear();
+                      onSearch();
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
+}
 
-  Widget _albumList() {
-    return FutureBuilder<List<Album>>(
-      future: _albums,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-        if (snap.hasError) {
-          return _Message('Каталог не отвечает. Проверьте подключение к интернету.', action: 'Повторить', onAction: _search);
-        }
-        final albums = snap.data ?? const [];
-        if (albums.isEmpty) {
-          return const _Message(
-              'В открытом каталоге этого нет. Здесь только свободная музыка и концертные записи. Популярных артистов ищите во вкладке «Радио».');
-        }
-        return ListView.builder(
-          itemCount: albums.length,
-          itemBuilder: (context, i) {
-            final a = albums[i];
-            return ListTile(
-              leading: Cover(a.art, size: 52, seed: a.id),
-              title: Text(a.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: const Icon(Icons.chevron_right, color: kMuted),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumPage(a))),
-            );
-          },
-        );
-      },
+/// Internet radio: its own screen, opened from the home page.
+class RadioPage extends StatefulWidget {
+  const RadioPage({super.key});
+
+  @override
+  State<RadioPage> createState() => _RadioPageState();
+}
+
+class _RadioPageState extends State<RadioPage> {
+  final _query = TextEditingController();
+  late Future<List<Track>> _stations = radio.search('');
+
+  void _search() => setState(() => _stations = radio.search(_query.text));
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Радио')),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text('Живой эфир станций со всего мира. Отметьте станцию сердечком, чтобы она была под рукой.',
+                style: TextStyle(color: kMuted)),
+          ),
+          _SearchField(controller: _query, hint: 'Станция или жанр: шансон, rock', onSearch: _search),
+          Expanded(
+            child: ListenableBuilder(
+              listenable: library,
+              builder: (context, _) => FutureBuilder<List<Track>>(
+                future: _stations,
+                builder: (context, snap) {
+                  final mine = _query.text.trim().isEmpty ? library.stations : const <Track>[];
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snap.hasError && mine.isEmpty) {
+                    return _Message('Список станций не загрузился. Проверьте подключение к интернету.',
+                        action: 'Повторить', onAction: _search);
+                  }
+                  final mineIds = {for (final t in mine) t.id};
+                  final found = (snap.data ?? const <Track>[]).where((t) => !mineIds.contains(t.id)).toList();
+                  if (found.isEmpty && mine.isEmpty) {
+                    return const _Message(
+                        'Станций с таким названием или жанром нет. Попробуйте другое слово, например «rock» или «ретро».');
+                  }
+                  return ListView(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    children: [
+                      if (mine.isNotEmpty) ...[
+                        const _Header('Мои станции'),
+                        for (final t in mine) TrackTile(t, onTap: () => player.playAll([t])),
+                        const _Header('Популярные'),
+                      ],
+                      for (final t in found) TrackTile(t, onTap: () => player.playAll([t])),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -825,7 +883,7 @@ class _LibraryPageState extends State<LibraryPage> {
             onAction: _scan,
           ),
         _Filter.favorites => const _Message('Отмечайте треки и станции сердечком, и они соберутся здесь.'),
-        _Filter.stations => const _Message('Отметьте станцию сердечком в Каталоге, и она появится здесь.'),
+        _Filter.stations => const _Message('Откройте Радио на Главной и отметьте станцию сердечком, она появится здесь.'),
         _ => const _Message('Треки с телефона и скачанные из каталога играют без интернета.'),
       };
 
