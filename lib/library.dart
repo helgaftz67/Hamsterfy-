@@ -24,6 +24,11 @@ class Library extends ChangeNotifier {
   /// Playlists by name, each an ordered list of track ids.
   final Map<String, List<String>> playlists = {};
 
+  /// Listening cache: catalog tracks are saved as they are played, and the
+  /// least played ones are removed once the cache outgrows the limit.
+  bool autoCache = true;
+  int cacheLimitMb = 2048;
+
   /// Download progress per track id, 0..1.
   final Map<String, double> downloading = {};
 
@@ -58,6 +63,8 @@ class Library extends ChangeNotifier {
     plays.clear();
     lastPlayed.clear();
     playlists.clear();
+    autoCache = true;
+    cacheLimitMb = 2048;
     downloading.clear();
     await Directory(_music).create(recursive: true);
     if (!await _file.exists()) {
@@ -81,6 +88,8 @@ class Library extends ChangeNotifier {
     favorites.addAll((j['favorites'] as List? ?? const []).cast<String>());
     plays.addAll((j['plays'] as Map? ?? const {}).cast<String, int>());
     lastPlayed.addAll((j['lastPlayed'] as Map? ?? const {}).cast<String, int>());
+    autoCache = j['autoCache'] as bool? ?? true;
+    cacheLimitMb = j['cacheLimitMb'] as int? ?? 2048;
     (j['playlists'] as Map? ?? const {}).forEach((name, ids) {
       playlists[name as String] = (ids as List).cast<String>().toList();
     });
@@ -92,6 +101,8 @@ class Library extends ChangeNotifier {
         'plays': plays,
         'lastPlayed': lastPlayed,
         'playlists': playlists,
+        'autoCache': autoCache,
+        'cacheLimitMb': cacheLimitMb,
       };
 
   void _changed() {
@@ -286,9 +297,10 @@ class Library extends ChangeNotifier {
     return Track(id: id, title: title, artist: artist, album: album, path: file.path, art: art, durationMs: durationMs);
   }
 
-  /// Saves a catalog track to the device for offline listening.
-  Future<void> download(Track t) async {
-    if (t.isLocal || t.url == null || downloading.containsKey(t.id)) return;
+  /// Saves a catalog track to the device for offline listening. With [auto]
+  /// the file belongs to the listening cache and may be evicted later.
+  Future<void> download(Track t, {bool auto = false}) async {
+    if (t.isLocal || t.isRadio || t.url == null || downloading.containsKey(t.id)) return;
     downloading[t.id] = 0;
     notifyListeners();
     final dest = File('$_music/${_safe(t.id)}.mp3');
@@ -312,6 +324,8 @@ class Library extends ChangeNotifier {
       }
       await sink.close();
       t.path = dest.path;
+      t.auto = auto;
+      t.size = got;
       tracks[t.id] = t;
     } catch (e) {
       if (await dest.exists()) await dest.delete();
@@ -334,6 +348,8 @@ class Library extends ChangeNotifier {
       }
     }
     t.path = null;
+    t.auto = false;
+    t.size = 0;
     if (t.url == null || !(favorites.contains(t.id) || _inPlaylist(t.id))) {
       tracks.remove(t.id);
       favorites.remove(t.id);
@@ -345,6 +361,69 @@ class Library extends ChangeNotifier {
   }
 
   static String _safe(String s) => s.replaceAll(RegExp(r'[^\w.\-]+', unicode: true), '_');
+
+  // ---- Listening cache ----------------------------------------------------
+
+  List<Track> get cached => tracks.values.where((t) => t.auto && t.isLocal).toList();
+  int get cacheBytes => cached.fold(0, (sum, t) => sum + t.size);
+
+  /// Called when a track starts playing: saves it to the cache and makes
+  /// room if the cache is over its limit. [playingId] is never evicted.
+  Future<void> cacheAfterPlay(Track t) async {
+    if (!autoCache || t.isLocal || t.isRadio || t.url == null) return;
+    try {
+      await download(t, auto: true);
+    } catch (_) {
+      return; // No connection or no space: the track simply stays a stream.
+    }
+    await trimCache(keepId: t.id);
+  }
+
+  /// Cached tracks that must go to fit [limitBytes], least valuable first:
+  /// not favourite, played least, heard longest ago.
+  List<Track> overLimit(int limitBytes, {String? keepId}) {
+    final order = cached.where((t) => t.id != keepId).toList()
+      ..sort((a, b) {
+        final fav = (favorites.contains(a.id) ? 1 : 0) - (favorites.contains(b.id) ? 1 : 0);
+        if (fav != 0) return fav;
+        final byPlays = (plays[a.id] ?? 0).compareTo(plays[b.id] ?? 0);
+        if (byPlays != 0) return byPlays;
+        return (lastPlayed[a.id] ?? 0).compareTo(lastPlayed[b.id] ?? 0);
+      });
+    var total = cacheBytes;
+    final out = <Track>[];
+    for (final t in order) {
+      if (total <= limitBytes) break;
+      out.add(t);
+      total -= t.size;
+    }
+    return out;
+  }
+
+  Future<void> trimCache({String? keepId}) async {
+    for (final t in overLimit(cacheLimitMb * 1024 * 1024, keepId: keepId)) {
+      await remove(t);
+    }
+  }
+
+  Future<void> clearCache() async {
+    for (final t in cached) {
+      await remove(t);
+    }
+  }
+
+  /// Keeps an automatically cached track for good.
+  void pin(Track t) {
+    t.auto = false;
+    _changed();
+  }
+
+  Future<void> setCache({bool? enabled, int? limitMb}) async {
+    if (enabled != null) autoCache = enabled;
+    if (limitMb != null) cacheLimitMb = limitMb;
+    _changed();
+    await trimCache();
+  }
 
   // ---- Recommendations ---------------------------------------------------
 

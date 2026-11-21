@@ -10,6 +10,8 @@ class Track {
     this.path,
     this.art,
     this.durationMs = 0,
+    this.auto = false,
+    this.size = 0,
     int? addedAt,
   }) : addedAt = addedAt ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -29,6 +31,13 @@ class Track {
   int durationMs;
   final int addedAt;
 
+  /// True when the file was saved automatically by the listening cache and
+  /// may be removed again to free space. False for explicit downloads.
+  bool auto;
+
+  /// Size of the saved file in bytes, 0 when unknown.
+  int size;
+
   bool get isLocal => path != null;
 
   /// A live internet radio station: an endless stream that cannot be saved.
@@ -47,6 +56,8 @@ class Track {
         'art': art,
         'durationMs': durationMs,
         'addedAt': addedAt,
+        'auto': auto,
+        'size': size,
       };
 
   factory Track.fromJson(Map<String, dynamic> j) => Track(
@@ -59,6 +70,8 @@ class Track {
         art: j['art'] as String?,
         durationMs: j['durationMs'] as int? ?? 0,
         addedAt: j['addedAt'] as int?,
+        auto: j['auto'] as bool? ?? false,
+        size: j['size'] as int? ?? 0,
       );
 }
 

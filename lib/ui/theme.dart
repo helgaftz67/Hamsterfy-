@@ -109,7 +109,7 @@ class TrackTile extends StatelessWidget {
                 const Icon(Icons.sensors, size: 14, color: kAmber),
                 const SizedBox(width: 4),
               ] else if (t.isLocal) ...[
-                const Icon(Icons.download_done, size: 14, color: kAmber),
+                Icon(t.auto ? Icons.cached : Icons.download_done, size: 14, color: kAmber),
                 const SizedBox(width: 4),
               ],
               Expanded(child: Text(t.artist, maxLines: 1, overflow: TextOverflow.ellipsis)),
@@ -141,6 +141,9 @@ class TrackTile extends StatelessWidget {
                       }
                     case 'remove':
                       await library.remove(t);
+                    case 'pin':
+                      library.pin(t);
+                      if (context.mounted) toast(context, 'Трек сохранён и не будет удалён при очистке кэша');
                     case 'playlist':
                       if (context.mounted) await addToPlaylistDialog(context, t);
                     case 'unlist':
@@ -153,6 +156,7 @@ class TrackTile extends StatelessWidget {
                   if (playlist != null) const PopupMenuItem(value: 'unlist', child: Text('Убрать из плейлиста')),
                   if (!t.isLocal && !t.isRadio && t.url != null && progress == null)
                     const PopupMenuItem(value: 'download', child: Text('Скачать')),
+                  if (t.isLocal && t.auto) const PopupMenuItem(value: 'pin', child: Text('Сохранить навсегда')),
                   if (t.isLocal && !t.isDevice)
                     const PopupMenuItem(value: 'remove', child: Text('Удалить с устройства')),
                 ],

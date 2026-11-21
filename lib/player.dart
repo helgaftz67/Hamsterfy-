@@ -17,6 +17,7 @@ class Player extends ChangeNotifier {
         if (next.id != current?.id) {
           current = next;
           library.recordPlay(next);
+          unawaited(library.cacheAfterPlay(next));
         }
         notifyListeners();
       }),

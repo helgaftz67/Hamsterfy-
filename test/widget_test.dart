@@ -131,6 +131,24 @@ void main() {
       expect(lib.stations.single.title, 'High');
     });
 
+    test('cache eviction: least played first, favourites last, playing track kept', () {
+      final lib = Library();
+      for (final (id, plays) in [('a', 5), ('b', 0), ('c', 2), ('d', 1)]) {
+        lib.tracks[id] = Track(id: id, title: id, artist: 'X', url: 'https://x/$id', path: '/c/$id', auto: true, size: 100);
+        lib.plays[id] = plays;
+      }
+      lib.tracks['pinned'] = Track(id: 'pinned', title: 'p', artist: 'X', url: 'https://x/p', path: '/c/p', size: 1000);
+      lib.favorites.add('b');
+      expect(lib.cacheBytes, 400);
+      expect(lib.overLimit(400), isEmpty);
+      expect(lib.overLimit(200).map((t) => t.id), ['d', 'c']);
+      expect(lib.overLimit(200, keepId: 'd').map((t) => t.id), ['c', 'a']);
+      expect(lib.overLimit(0).map((t) => t.id), ['d', 'c', 'a', 'b']);
+      final copy = Library()..restore(lib.snapshot());
+      expect(copy.cacheBytes, 400);
+      expect(copy.cacheLimitMb, 2048);
+    });
+
     test('snapshot round-trips favourites and plays', () {
       final lib = seeded();
       lib.favorites.add('t1');

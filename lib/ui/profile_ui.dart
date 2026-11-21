@@ -239,6 +239,17 @@ void showAccountSheet(BuildContext context) {
           ),
           const Divider(height: 8),
           ListTile(
+            leading: const Icon(Icons.cached),
+            title: const Text('Кэш музыки'),
+            subtitle: Text(library.autoCache
+                ? 'Занято ${formatSize(library.cacheBytes)} из ${formatSize(library.cacheLimitMb * 1024 * 1024)}'
+                : 'Выключен'),
+            onTap: () {
+              Navigator.pop(sheet);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const CachePage()));
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.switch_account_outlined),
             title: const Text('Сменить аккаунт'),
             onTap: () {
@@ -269,4 +280,108 @@ void showAccountSheet(BuildContext context) {
       ),
     ),
   );
+}
+
+String formatSize(int bytes) {
+  if (bytes >= 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} ГБ';
+  return '${(bytes / (1024 * 1024)).round()} МБ';
+}
+
+/// Settings of the listening cache for the current account.
+class CachePage extends StatelessWidget {
+  const CachePage({super.key});
+
+  static const _limitsGb = [1, 2, 5, 10, 20];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Кэш музыки')),
+      body: ListenableBuilder(
+        listenable: library,
+        builder: (context, _) {
+          final limit = library.cacheLimitMb * 1024 * 1024;
+          final used = library.cacheBytes;
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            children: [
+              const Text(
+                'Треки из каталога сохраняются на телефон, когда вы их слушаете, и потом играют без интернета. '
+                'Когда кэш заполнится, первыми удалятся треки, которые вы слушали реже всего. '
+                'Избранное удаляется в последнюю очередь.',
+                style: TextStyle(color: kMuted),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Сохранять прослушанное'),
+                value: library.autoCache,
+                onChanged: (v) => library.setCache(enabled: v),
+              ),
+              const SizedBox(height: 8),
+              Text('Занято ${formatSize(used)} из ${formatSize(limit)} · треков: ${library.cached.length}',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(value: (used / limit).clamp(0, 1).toDouble(), minHeight: 8),
+              ),
+              const SizedBox(height: 24),
+              const Text('Лимит', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final gb in _limitsGb)
+                    ChoiceChip(
+                      label: Text('$gb ГБ'),
+                      selected: library.cacheLimitMb == gb * 1024,
+                      onSelected: (_) async {
+                        final over = library.overLimit(gb * 1024 * 1024 * 1024).length;
+                        if (over > 0) {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (d) => AlertDialog(
+                              title: Text('Уменьшить кэш до $gb ГБ?'),
+                              content: Text('Чтобы уложиться в лимит, с телефона удалится треков: $over. Послушать их снова можно будет через интернет.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+                                FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Уменьшить')),
+                              ],
+                            ),
+                          );
+                          if (ok != true) return;
+                        }
+                        await library.setCache(limitMb: gb * 1024);
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: library.cached.isEmpty
+                    ? null
+                    : () async {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (d) => AlertDialog(
+                            title: const Text('Очистить кэш?'),
+                            content: Text('С телефона удалится треков: ${library.cached.length}. Скачанные вручную и ваши файлы останутся.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+                              FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Очистить')),
+                            ],
+                          ),
+                        );
+                        if (ok == true) await library.clearCache();
+                      },
+                icon: const Icon(Icons.delete_sweep_outlined),
+                label: const Text('Очистить кэш'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
