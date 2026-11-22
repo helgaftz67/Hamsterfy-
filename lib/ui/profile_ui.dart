@@ -693,30 +693,10 @@ class ProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               _Row(
-                icon: Icons.cached_rounded,
-                title: 'Кэш музыки',
-                subtitle: library.autoCache
-                    ? 'Занято ${formatSize(library.cacheBytes)} из ${formatSize(library.cacheLimitMb * 1024 * 1024)}'
-                    : 'Выключен',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CachePage())),
+                icon: Icons.settings_outlined,
+                title: 'Настройки',
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
               ),
-              _Row(
-                icon: Icons.dns_outlined,
-                title: 'Мой сервер',
-                subtitle: library.hasServer ? library.serverUrl : 'Не подключён',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServerPage())),
-              ),
-              if (library.hidden.isNotEmpty)
-                _Row(
-                  icon: Icons.visibility_off_outlined,
-                  title: 'Скрытые треки: ${library.hidden.length}',
-                  subtitle: 'Вернуть в медиатеку всё, что вы из неё убрали',
-                  onTap: () async {
-                    library.unhideAll();
-                    final n = await library.scanDevice(ask: false);
-                    if (context.mounted) toast(context, n > 0 ? 'Возвращено треков: $n' : 'Скрытые треки вернутся при следующем поиске музыки');
-                  },
-                ),
               _Row(
                 icon: Icons.switch_account_outlined,
                 title: 'Сменить аккаунт',
@@ -1023,6 +1003,58 @@ class _ServerPageState extends State<ServerPage> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+
+/// Technical settings, kept off the profile: the cache, the personal
+/// server and tracks hidden from the library.
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Настройки')),
+      body: ListenableBuilder(
+        listenable: library,
+        builder: (context, _) => Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+              _Row(
+                icon: Icons.cached_rounded,
+                title: 'Кэш музыки',
+                subtitle: library.autoCache
+                    ? 'Занято ${formatSize(library.cacheBytes)} из ${formatSize(library.cacheLimitMb * 1024 * 1024)}'
+                    : 'Выключен',
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CachePage())),
+              ),
+              _Row(
+                icon: Icons.dns_outlined,
+                title: 'Мой сервер',
+                subtitle: library.hasServer ? library.serverUrl : 'Не подключён',
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServerPage())),
+              ),
+              if (library.hidden.isNotEmpty)
+                _Row(
+                  icon: Icons.visibility_off_outlined,
+                  title: 'Скрытые треки: ${library.hidden.length}',
+                  subtitle: 'Вернуть в медиатеку всё, что вы из неё убрали',
+                  onTap: () async {
+                    library.unhideAll();
+                    final n = await library.scanDevice(ask: false);
+                    if (context.mounted) toast(context, n > 0 ? 'Возвращено треков: $n' : 'Скрытые треки вернутся при следующем поиске музыки');
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
