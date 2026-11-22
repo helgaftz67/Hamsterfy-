@@ -8,19 +8,28 @@ import 'package:url_launcher/url_launcher.dart';
 import '../main.dart';
 import '../models.dart';
 
-const kBg = Color(0xFF121019);
-const kSurface = Color(0xFF1C1926);
-const kSunken = Color(0xFF262233);
-const kAccent = Color(0xFFA796FF);
-const kAmber = Color(0xFFFFB938);
-const kMuted = Color(0xFFA39FBC);
-const kInk = Color(0xFFECEAF5);
+// Dusk palette: a near-black ground, warm whites, and the colours of a
+// sunset for light: slate blue, mauve, peach, orange.
+const kBg = Color(0xFF0B0A0D);
+const kSurface = Color(0xFF17151B);
+const kSunken = Color(0xFF242029);
+const kAccent = Color(0xFFFFB48C); // peach: selection, links, hearts
+const kAmber = Color(0xFFFFE7A3); // cream: notes, warnings, small accents
+const kMuted = Color(0xFFA9A1A8);
+const kInk = Color(0xFFF5F1EC);
+
+/// Primary buttons: a warm cream, the brightest thing on a screen.
+const kCream = Color(0xFFFFF0BA);
+const kRose = Color(0xFFE8739F);
+const kDuskBlue = Color(0xFF55628C);
+const kMauve = Color(0xFF8C6A92);
+const kOrange = Color(0xFFF2733A);
 
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(seedColor: kAccent, brightness: Brightness.dark).copyWith(
     surface: kBg,
     primary: kAccent,
-    onPrimary: const Color(0xFF15121F),
+    onPrimary: Colors.black,
     secondary: kAmber,
     surfaceContainer: kSurface,
     surfaceContainerHigh: kSunken,
@@ -58,8 +67,8 @@ ThemeData buildTheme() {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: kInk,
-        foregroundColor: kBg,
+        backgroundColor: kCream,
+        foregroundColor: Colors.black,
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         textStyle: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 15),
@@ -76,12 +85,12 @@ ThemeData buildTheme() {
     ),
     chipTheme: base.chipTheme.copyWith(
       backgroundColor: kSurface,
-      selectedColor: kInk,
+      selectedColor: kCream,
       side: BorderSide.none,
       shape: const StadiumBorder(),
       showCheckmark: false,
       labelStyle: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w600, fontSize: 13.5),
-      secondaryLabelStyle: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, color: kBg),
+      secondaryLabelStyle: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, color: Colors.black),
     ),
     listTileTheme: const ListTileThemeData(
       subtitleTextStyle: TextStyle(fontFamily: 'Manrope', color: kMuted, fontSize: 13),

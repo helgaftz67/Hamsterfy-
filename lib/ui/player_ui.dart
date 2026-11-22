@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../lyrics.dart';
 import '../main.dart';
 import '../models.dart';
 import 'glass.dart';
@@ -40,7 +41,7 @@ class MiniPlayer extends StatelessWidget {
                 onTap: () => Navigator.of(context, rootNavigator: true).push(_playerRoute()),
                 child: Glass(
                   radius: 31,
-                  tint: Color.lerp(color, const Color(0xFF2A2540), .45),
+                  tint: Color.lerp(color, const Color(0xFF2B2429), .45),
                   child: Stack(
                     children: [
                       Padding(
@@ -89,7 +90,7 @@ class MiniPlayer extends StatelessWidget {
                               icon: Container(
                                 width: 40,
                                 height: 40,
-                                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                decoration: const BoxDecoration(color: kCream, shape: BoxShape.circle),
                                 child: Icon(player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                     size: 26, color: Colors.black),
                               ),
@@ -126,6 +127,216 @@ class MiniPlayer extends StatelessWidget {
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+/// Opens the full-screen player.
+void openPlayer(BuildContext context) => Navigator.of(context, rootNavigator: true).push(_playerRoute());
+
+/// The queue in a bottom sheet, from anywhere.
+void showQueueSheet(BuildContext context) => const PlayerPage()._showQueue(context);
+
+/// Desktop player: one wide glass bar with the track, transport, seek and
+/// the secondary controls side by side.
+class DesktopPlayerBar extends StatelessWidget {
+  const DesktopPlayerBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([player, library]),
+      builder: (context, _) {
+        final t = player.current;
+        if (t == null) return const SizedBox.shrink();
+        final fav = library.isFavorite(t);
+        Color dim(bool on) => on ? kAccent : Colors.white.withValues(alpha: .7);
+        return ArtColorBuilder(
+          art: t.art,
+          seed: _seed(t),
+          builder: (context, color) => Glass(
+            radius: 28,
+            tint: Color.lerp(color, const Color(0xFF2B2429), .5),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: SizedBox(
+              height: 68,
+              child: Row(
+                children: [
+                  // Track: click to open the full player.
+                  Expanded(
+                    flex: 3,
+                    child: Pressable(
+                      label: 'Открыть плеер: ${t.title}',
+                      onTap: () => openPlayer(context),
+                      child: Row(
+                        children: [
+                          Cover(t.art, size: 60, radius: 14, seed: _seed(t)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(t.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                                Text(t.artist,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: Colors.white.withValues(alpha: .72), fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: fav ? 'Убрать из избранного' : 'В избранное',
+                    onPressed: () => library.toggleFavorite(t),
+                    icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        color: fav ? kAccent : Colors.white),
+                  ),
+                  // Transport and seek in the middle.
+                  Expanded(
+                    flex: 5,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                                tooltip: 'Предыдущий',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: player.previous,
+                                icon: const Icon(Icons.skip_previous_rounded, size: 28, color: Colors.white)),
+                            const SizedBox(width: 6),
+                            Pressable(
+                              label: player.playing ? 'Пауза' : 'Играть',
+                              onTap: player.toggle,
+                              child: Container(
+                                width: 38,
+                                height: 38,
+                                decoration: const BoxDecoration(color: kCream, shape: BoxShape.circle),
+                                child: Icon(player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                    size: 26, color: Colors.black),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            IconButton(
+                                tooltip: 'Следующий',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: player.next,
+                                icon: const Icon(Icons.skip_next_rounded, size: 28, color: Colors.white)),
+                          ],
+                        ),
+                        if (t.isRadio)
+                          const Text('ПРЯМОЙ ЭФИР',
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1))
+                        else
+                          const _CompactSeek(),
+                      ],
+                    ),
+                  ),
+                  // Secondary controls on the right.
+                  Expanded(
+                    flex: 3,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        IconButton(
+                            tooltip: 'Перемешать',
+                            onPressed: player.toggleShuffle,
+                            icon: Icon(Icons.shuffle_rounded, size: 21, color: dim(player.audio.shuffleModeEnabled))),
+                        IconButton(
+                          tooltip: 'Повтор',
+                          onPressed: player.cycleLoop,
+                          icon: Icon(
+                              player.audio.loopMode == LoopMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+                              size: 21,
+                              color: dim(player.audio.loopMode != LoopMode.off)),
+                        ),
+                        IconButton(
+                            tooltip: 'Текст песни',
+                            onPressed: () => showLyricsSheet(context),
+                            icon: const Icon(Icons.lyrics_outlined, size: 21, color: Colors.white70)),
+                        IconButton(
+                            tooltip: 'Таймер сна',
+                            onPressed: () => _showSleepTimer(context),
+                            icon: Icon(Icons.bedtime_outlined,
+                                size: 21, color: player.sleepAt == null ? Colors.white70 : kAmber)),
+                        IconButton(
+                            tooltip: 'Очередь',
+                            onPressed: () => showQueueSheet(context),
+                            icon: const Icon(Icons.queue_music_rounded, size: 22, color: Colors.white70)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One-line seek bar with the times at its ends.
+class _CompactSeek extends StatefulWidget {
+  const _CompactSeek();
+
+  @override
+  State<_CompactSeek> createState() => _CompactSeekState();
+}
+
+class _CompactSeekState extends State<_CompactSeek> {
+  double? _drag;
+
+  @override
+  Widget build(BuildContext context) {
+    const time = TextStyle(color: Colors.white70, fontSize: 11, fontFeatures: [FontFeature.tabularFigures()]);
+    return StreamBuilder<Duration>(
+      stream: player.audio.positionStream,
+      builder: (context, snap) {
+        final total = player.audio.duration ?? Duration(milliseconds: player.current?.durationMs ?? 0);
+        final max = total.inMilliseconds.toDouble();
+        final pos = (_drag ?? (snap.data?.inMilliseconds ?? 0).toDouble()).clamp(0.0, max <= 0 ? 0.0 : max);
+        return Row(
+          children: [
+            SizedBox(width: 38, child: Text(formatDuration(Duration(milliseconds: pos.round())), style: time, textAlign: TextAlign.right)),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  activeTrackColor: Colors.white,
+                  inactiveTrackColor: Colors.white.withValues(alpha: .22),
+                  thumbColor: Colors.white,
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                  thumbShape: RoundSliderThumbShape(enabledThumbRadius: _drag == null ? 4 : 6),
+                ),
+                child: SizedBox(
+                  height: 18,
+                  child: Slider(
+                    min: 0,
+                    max: max <= 0 ? 1 : max,
+                    value: pos,
+                    onChanged: max <= 0 ? null : (v) => setState(() => _drag = v),
+                    onChangeEnd: (v) {
+                      player.audio.seek(Duration(milliseconds: v.round()));
+                      setState(() => _drag = null);
+                    },
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 38, child: Text(formatDuration(total), style: time)),
+          ],
         );
       },
     );
@@ -200,7 +411,10 @@ class PlayerPage extends StatelessWidget {
                     ),
                   ),
                   SafeArea(
-                    child: Padding(
+                    child: Center(
+                     child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 26),
                       child: Column(
                         children: [
@@ -229,6 +443,11 @@ class PlayerPage extends StatelessWidget {
                                   ],
                                 ),
                               ),
+                              if (!t.isRadio)
+                                IconButton(
+                                    tooltip: 'Текст песни',
+                                    onPressed: () => showLyricsSheet(context),
+                                    icon: const Icon(Icons.lyrics_outlined, color: Colors.white)),
                               IconButton(
                                   tooltip: 'Таймер сна',
                                   onPressed: () => _showSleepTimer(context),
@@ -385,6 +604,8 @@ class PlayerPage extends StatelessWidget {
                           const SizedBox(height: 22),
                         ],
                       ),
+                      ),
+                     ),
                     ),
                   ),
                 ],
@@ -550,7 +771,7 @@ class _PlayButton extends StatelessWidget {
       button: true,
       label: playing ? 'Пауза' : 'Играть',
       child: Material(
-        color: Colors.white,
+        color: kCream,
         shape: const CircleBorder(),
         elevation: 8,
         shadowColor: Colors.black,
@@ -690,6 +911,184 @@ class _SeekState extends State<_Seek> {
           ],
         );
       },
+    );
+  }
+}
+
+
+/// Lyrics of the current track in a glass sheet. Timed lyrics follow the
+/// song and a tap on a line jumps there.
+void showLyricsSheet(BuildContext context, {LyricsService? service}) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black54,
+    isScrollControlled: true,
+    builder: (_) => FractionallySizedBox(
+      heightFactor: .86,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: Glass(
+              radius: 36,
+              blur: 40,
+              child: ListenableBuilder(
+                listenable: player,
+                builder: (context, _) {
+                  final t = player.current;
+                  if (t == null) return const SizedBox.shrink();
+                  return _LyricsView(key: ValueKey(t.id), track: t, service: service ?? lyrics);
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _LyricsView extends StatefulWidget {
+  const _LyricsView({super.key, required this.track, required this.service});
+  final Track track;
+  final LyricsService service;
+
+  @override
+  State<_LyricsView> createState() => _LyricsViewState();
+}
+
+class _LyricsViewState extends State<_LyricsView> {
+  late Future<Lyrics?> _load = widget.service.find(widget.track);
+  final _keys = <int, GlobalKey>{};
+  int _shown = -1;
+
+  void _follow(int line) {
+    if (line == _shown || line < 0) return;
+    _shown = line;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _keys[line]?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(ctx,
+            alignment: .38, duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic);
+      }
+    });
+  }
+
+  Widget _message(IconData icon, String title, String body, {VoidCallback? retry}) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 44, color: kMuted),
+              const SizedBox(height: 14),
+              Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text(body, textAlign: TextAlign.center, style: const TextStyle(color: kMuted, height: 1.35)),
+              if (retry != null) ...[
+                const SizedBox(height: 16),
+                FilledButton(onPressed: retry, child: const Text('Повторить')),
+              ],
+            ],
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.track;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 10),
+        Center(
+          child: Container(
+            width: 38,
+            height: 5,
+            decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(3)),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(26, 16, 26, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(t.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -.4)),
+              const SizedBox(height: 2),
+              Text(t.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kMuted)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<Lyrics?>(
+            future: _load,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator(color: kCream));
+              }
+              if (snap.hasError) {
+                return _message(Icons.cloud_off_rounded, 'Не удалось загрузить текст',
+                    'Сервис текстов не ответил. Проверьте интернет.',
+                    retry: () => setState(() => _load = widget.service.find(t)));
+              }
+              final l = snap.data;
+              if (l == null || l.isEmpty) {
+                return _message(Icons.lyrics_outlined, 'Текста пока нет', 'Для этой песни в открытой базе текстов ничего не нашлось.');
+              }
+              if (l.instrumental && l.plain.trim().isEmpty && l.synced.isEmpty) {
+                return _message(Icons.piano_rounded, 'Инструментал', 'В этой композиции нет слов.');
+              }
+              if (l.synced.isEmpty) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(26, 6, 26, 40),
+                  child: SelectableText(l.plain,
+                      style: const TextStyle(fontSize: 19, height: 1.6, fontWeight: FontWeight.w600, color: kInk)),
+                );
+              }
+              return StreamBuilder<Duration>(
+                stream: player.audio.positionStream,
+                builder: (context, pos) {
+                  final now = l.lineAt(pos.data ?? Duration.zero);
+                  _follow(now);
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(26, 6, 26, 220),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var i = 0; i < l.synced.length; i++)
+                          Pressable(
+                            key: _keys.putIfAbsent(i, GlobalKey.new),
+                            onTap: () => player.audio.seek(l.synced[i].at),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 260),
+                                style: TextStyle(
+                                  fontFamily: 'Manrope',
+                                  fontSize: 24,
+                                  height: 1.25,
+                                  letterSpacing: -.4,
+                                  fontWeight: FontWeight.w800,
+                                  color: i == now ? kInk : (i < now ? Colors.white30 : Colors.white54),
+                                ),
+                                child: Text(l.synced[i].text.isEmpty ? '♪' : l.synced[i].text),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

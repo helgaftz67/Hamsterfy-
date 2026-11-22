@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'theme.dart';
 
-/// The Hamsterfy mascots as a living scene: a vinyl record spins like a
+/// The Hamsterfy mascots, made of glass, as a living scene: a vinyl record spins like a
 /// hamster wheel while the white and the black hamster nod to the beat in
 /// their headphones, blink now and then, and send notes drifting up.
 class HamsterScene extends StatefulWidget {
@@ -67,9 +67,9 @@ const _white = _Fur(
 const _black = _Fur(
   fur: Color(0xFF221D32),
   muzzle: Color(0xFF3E3756),
-  earIn: Color(0xFF7E6CB2),
+  earIn: Color(0xFF9A7896),
   eye: Color(0xFF141020),
-  blush: Color(0xFFAA6EBE),
+  blush: Color(0xFFC77A9C),
   nose: Color(0xFFFFB0C4),
   phones: Color(0xFFFCFAFF),
   eyeRing: Color(0xFFFAF8FF),
@@ -137,21 +137,21 @@ class HamsterPainter extends CustomPainter {
       ..shader = const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFFB7A6FF), Color(0xFF6C4CF0)],
+        colors: [Color(0xFFF7B594), Color(0xFFE5622B)],
       ).createShader(Rect.fromCircle(center: c, radius: r * .36)));
     canvas.save();
     canvas.translate(c.dx, c.dy);
     canvas.rotate(angle);
     canvas.drawRRect(
       RRect.fromRectAndRadius(Rect.fromLTWH(r * .10, -r * .035, r * .20, r * .07), Radius.circular(r * .035)),
-      Paint()..color = kAmber,
+      Paint()..color = kCream,
     );
     canvas.restore();
     canvas.drawCircle(c, r * .045, Paint()..color = const Color(0xFF14111F));
   }
 
   void _notes(Canvas canvas, double w, double h, double unit) {
-    const lanes = [(-.34, 0.0, 1.0, kAccent), (.36, .37, .8, kAmber), (-.08, .68, .7, Colors.white), (.16, .15, .6, Color(0xFFFF8FB1))];
+    const lanes = [(-.34, 0.0, 1.0, kAccent), (.36, .37, .8, kAmber), (-.08, .68, .7, Colors.white), (.16, .15, .6, kRose)];
     for (final (x, phase, scale, color) in lanes) {
       final p = (t * 2 + phase) % 1;
       final rise = Curves.easeOut.transform(p);
@@ -186,33 +186,103 @@ class HamsterPainter extends CustomPainter {
     );
   }
 
+  /// Paints [shape] as a piece of glass: a translucent body that lets the
+  /// backdrop through, a pool of warm light at the bottom, a soft sheen
+  /// and a sharp glint at the top-left, and a bright rim.
+  void _glass(Canvas canvas, Path shape, Rect box, Color top, Color bottom, {double rim = .8, double sheen = .5}) {
+    canvas.drawPath(
+      shape,
+      Paint()
+        ..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [top, bottom])
+            .createShader(box),
+    );
+    canvas.save();
+    canvas.clipPath(shape);
+    // Light from the sunset pooling inside the lower part.
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(box.center.dx, box.bottom), width: box.width * 1.1, height: box.height * .7),
+      Paint()
+        ..color = const Color(0x40F2A07A)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, box.height * .12),
+    );
+    // Soft sheen across the upper left.
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(box.left + box.width * .34, box.top + box.height * .22),
+          width: box.width * .62,
+          height: box.height * .34),
+      Paint()
+        ..color = Colors.white.withValues(alpha: sheen)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, box.height * .09),
+    );
+    canvas.restore();
+    // Rim: brightest where the light comes from.
+    canvas.drawPath(
+      shape,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = box.width * .012
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: rim),
+            Colors.white.withValues(alpha: rim * .18),
+            Colors.white.withValues(alpha: rim * .45),
+          ],
+          stops: const [0, .55, 1],
+        ).createShader(box),
+    );
+  }
+
   void _hamster(Canvas canvas, Offset c, double s, _Fur f, {required double tilt, required bool blink}) {
     canvas.save();
     canvas.translate(c.dx, c.dy);
     canvas.rotate(tilt);
+    Rect ovalRect(double x, double y, double rx, double ry) =>
+        Rect.fromCenter(center: Offset(x * s, y * s), width: rx * 2 * s, height: ry * 2 * s);
     void oval(double x, double y, double rx, double ry, Color color) =>
-        canvas.drawOval(Rect.fromCenter(center: Offset(x * s, y * s), width: rx * 2 * s, height: ry * 2 * s), Paint()..color = color);
+        canvas.drawOval(ovalRect(x, y, rx, ry), Paint()..color = color);
+    Path ovalPath(double x, double y, double rx, double ry) => Path()..addOval(ovalRect(x, y, rx, ry));
+    Path join(Path a, Path b) => Path.combine(PathOperation.union, a, b);
 
-    // Soft shadow, round body and little paws.
+    // The white one is clear frosted glass, the black one smoked glass.
+    final dark = f.eyeRing != null;
+    final top = dark ? const Color(0xB8221C2C) : const Color(0xC7FFFFFF);
+    final bottom = dark ? const Color(0x80120E18) : const Color(0x66FFFFFF);
+    final rim = dark ? .55 : .95;
+    final sheen = dark ? .22 : .55;
+
+    // Soft shadow on the ground.
     canvas.drawOval(
       Rect.fromCenter(center: Offset(0, s * 1.42), width: s * 2.3, height: s * .5),
       Paint()
         ..color = const Color(0x55000000)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, s * .16),
     );
-    oval(0, 1.02, .92, .62, f.fur);
+
+    // Body, head and cheeks are one piece of glass: joined into a single
+    // outline so the overlaps do not show as seams.
+    var body = ovalPath(0, 1.02, .92, .62);
+    body = join(body, ovalPath(0, 0, .98, .88));
     for (final sx in [-1.0, 1.0]) {
-      oval(sx * .34, .98, .17, .12, f.muzzle);
+      body = join(body, ovalPath(sx * .60, .34, .50, .42));
     }
-    // Head with full cheeks.
-    oval(0, 0, .98, .88, f.fur);
+    _glass(canvas, body, Rect.fromLTRB(-1.1 * s, -.88 * s, 1.1 * s, 1.64 * s), top, bottom, rim: rim, sheen: sheen);
+    // A sharp glint, the mark of something glossy.
+    oval(-.50, -.52, .16, .075, Colors.white.withValues(alpha: dark ? .55 : .9));
+    oval(-.28, -.66, .05, .035, Colors.white.withValues(alpha: dark ? .45 : .8));
+
+    // Paws and muzzle: slightly denser glass.
     for (final sx in [-1.0, 1.0]) {
-      oval(sx * .60, .34, .50, .42, f.fur);
+      oval(sx * .34, .98, .17, .12, f.muzzle.withValues(alpha: dark ? .55 : .5));
     }
-    oval(0, .40, .40, .28, f.muzzle);
-    // Headphones: band over the head, cups on the sides.
+    oval(0, .40, .40, .28, f.muzzle.withValues(alpha: dark ? .5 : .45));
+
+    // Headphones: a glossy band over the head, glass cups on the sides.
+    final bandRect = Rect.fromCenter(center: Offset.zero, width: s * 2.08, height: s * 1.94);
     canvas.drawArc(
-      Rect.fromCenter(center: Offset.zero, width: s * 2.08, height: s * 1.94),
+      bandRect,
       192 * math.pi / 180,
       156 * math.pi / 180,
       false,
@@ -220,24 +290,27 @@ class HamsterPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = s * .14
         ..strokeCap = StrokeCap.round
-        ..color = f.phones,
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color.lerp(f.phones, Colors.white, .35)!, f.phones.withValues(alpha: .85)],
+        ).createShader(bandRect),
     );
     for (final sx in [-1.0, 1.0]) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTRB((sx * 1.02 - .19) * s, -.30 * s, (sx * 1.02 + .19) * s, .34 * s), Radius.circular(s * .17)),
-        Paint()..color = f.phones,
-      );
+      final cup = Rect.fromLTRB((sx * 1.02 - .19) * s, -.30 * s, (sx * 1.02 + .19) * s, .34 * s);
+      final cupPath = Path()..addRRect(RRect.fromRectAndRadius(cup, Radius.circular(s * .17)));
+      _glass(canvas, cupPath, cup, f.phones.withValues(alpha: .92), f.phones.withValues(alpha: .70), rim: .7, sheen: .3);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
             Rect.fromLTRB((sx * 1.02 - .08) * s, -.16 * s, (sx * 1.02 + .08) * s, .20 * s), Radius.circular(s * .07)),
-        Paint()..color = kAmber,
+        Paint()..color = kCream,
       );
     }
-    // Ears peek out in front of the band.
+    // Ears peek out in front of the band, each its own bead of glass.
     for (final sx in [-1.0, 1.0]) {
-      oval(sx * .60, -.72, .23, .23, f.fur);
-      oval(sx * .60, -.70, .125, .125, f.earIn);
+      final ear = ovalRect(sx * .60, -.72, .23, .23);
+      _glass(canvas, Path()..addOval(ear), ear, top, bottom, rim: rim, sheen: sheen * .8);
+      oval(sx * .60, -.70, .125, .125, f.earIn.withValues(alpha: .85));
     }
     // Eyes: glossy when open, a happy curve when blinking.
     for (final sx in [-1.0, 1.0]) {
@@ -262,7 +335,7 @@ class HamsterPainter extends CustomPainter {
       oval(ex - .045, ey + .06, .025, .025, Colors.white);
     }
     for (final sx in [-1.0, 1.0]) {
-      oval(sx * .64, .36, .15, .09, f.blush);
+      oval(sx * .64, .36, .15, .09, f.blush.withValues(alpha: .85));
     }
     // Tiny nose and smile.
     oval(0, .27, .06, .045, f.nose);

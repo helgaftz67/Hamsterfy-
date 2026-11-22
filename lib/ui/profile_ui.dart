@@ -7,6 +7,7 @@ import '../main.dart';
 import '../my_server.dart';
 import '../profiles.dart';
 import 'aurora.dart';
+import 'glass.dart';
 import 'hamsters.dart';
 import 'theme.dart';
 
@@ -70,9 +71,14 @@ class ProfileGate extends StatelessWidget {
         children: [
           const AuroraBackground(fadeTo: kBg),
           SafeArea(
-            child: ListenableBuilder(
-              listenable: profiles,
-              builder: (context, _) => profiles.list.isEmpty ? _welcome(context) : _picker(context),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: ListenableBuilder(
+                  listenable: profiles,
+                  builder: (context, _) => profiles.list.isEmpty ? _welcome(context) : _picker(context),
+                ),
+              ),
             ),
           ),
         ],
@@ -82,40 +88,53 @@ class ProfileGate extends StatelessWidget {
 
   Widget _welcome(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Expanded(flex: 6, child: HamsterScene()),
-          const Text('Музыка,\nкоторая ваша',
-              style: TextStyle(fontSize: 44, height: 1.02, fontWeight: FontWeight.w800, letterSpacing: -1.6)),
-          const SizedBox(height: 14),
-          const Text('Ищите треки, собирайте плейлисты и слушайте без интернета. Два хомяка присмотрят за коллекцией.',
-              style: TextStyle(color: kMuted, fontSize: 16, height: 1.4, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 22),
-          const Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _Perk(Icons.search_rounded, 'Поиск'),
-              _Perk(Icons.graphic_eq_rounded, 'Моя волна'),
-              _Perk(Icons.download_done_rounded, 'Офлайн'),
-              _Perk(Icons.sensors_rounded, 'Радио'),
-            ],
-          ),
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18)),
-              onPressed: () => _create(context),
-              child: const Text('Начать', style: TextStyle(fontSize: 17)),
+          const Expanded(flex: 5, child: HamsterScene()),
+          // Everything to read and press sits on one sheet of glass.
+          Glass(
+            radius: 40,
+            strength: .7,
+            padding: const EdgeInsets.fromLTRB(24, 26, 24, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Музыка,\nкоторая ваша',
+                    style: TextStyle(fontSize: 42, height: 1.02, fontWeight: FontWeight.w800, letterSpacing: -1.6)),
+                const SizedBox(height: 12),
+                Text('Ищите треки, собирайте плейлисты и слушайте без интернета. Два хомяка присмотрят за коллекцией.',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: .78), fontSize: 15.5, height: 1.4, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 18),
+                const Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _Perk(Icons.search_rounded, 'Поиск'),
+                    _Perk(Icons.graphic_eq_rounded, 'Моя волна'),
+                    _Perk(Icons.download_done_rounded, 'Офлайн'),
+                    _Perk(Icons.sensors_rounded, 'Радио'),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18)),
+                    onPressed: () => _create(context),
+                    child: const Text('Начать', style: TextStyle(fontSize: 17)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Text('Без почты и паролей. Аккаунт живёт на этом устройстве.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white.withValues(alpha: .62), fontSize: 12.5)),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          const Center(
-            child: Text('Без почты и паролей. Аккаунт живёт на этом устройстве.',
-                textAlign: TextAlign.center, style: TextStyle(color: kMuted, fontSize: 12.5)),
           ),
         ],
       ),
@@ -349,8 +368,11 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
         children: [
           const AuroraBackground(fadeTo: kBg, fadeFrom: .12),
           SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(28, 8, 28, 28),
+            child: Center(
+             child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
@@ -379,7 +401,15 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                         : ProfileAvatar(preview, key: ValueKey(profileColor(preview)), size: 112),
                   ),
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 22),
+                Glass(
+                  radius: 36,
+                  strength: .7,
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                 const Text('Как вас зовут?',
                     style: TextStyle(fontSize: 38, height: 1.05, fontWeight: FontWeight.w800, letterSpacing: -1.3)),
                 const SizedBox(height: 8),
@@ -441,7 +471,12 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                   onPressed: _busy ? null : _submit,
                   child: const Text('Создать аккаунт', style: TextStyle(fontSize: 17)),
                 ),
+                    ],
+                  ),
+                ),
               ],
+              ),
+             ),
             ),
           ),
         ],

@@ -101,7 +101,8 @@ void main() {
     panel.settings.port = blocker.port;
     await panel.start();
     expect(panel.running, isFalse);
-    expect(panel.problem, contains('Порт ${blocker.port} занят'));
+    expect(panel.portBusy, isTrue);
+    expect(panel.problem, contains('Порт ${blocker.port} занят другой программой на этом компьютере'));
     await blocker.close();
     await panel.start();
     expect(panel.running, isTrue);
@@ -142,5 +143,36 @@ void main() {
     panel.settings.port = 0;
     await panel.start();
     expect(panel.running, isTrue);
+  });
+
+  test('a second copy is recognised, and can start on a free port instead', () async {
+    await panel.start();
+    final taken = panel.port!;
+    final second = ServerController(
+      dataDir: Directory('${root.path}/data2'),
+      defaultMusicFolder: '${root.path}/music',
+      client: MockClient((_) async => http.Response('down', 500)),
+    );
+    await second.load();
+    second.settings.port = taken;
+    await second.start();
+    expect(second.running, isFalse);
+    expect(second.portBusy, isTrue);
+    expect(second.problem, contains('Hamsterfy Server уже запущен на этом компьютере'));
+    expect(second.problem, contains('$taken'));
+
+    await second.startOnFreePort();
+    expect(second.running, isTrue);
+    expect(second.problem, isNull);
+    expect(second.port, isNot(taken));
+    expect(second.settings.port, second.port); // remembered for next launch
+    // Both servers answer, each on its own port.
+    expect((await get('/api/status')).$1, 200);
+    final other = await client.getUrl(Uri.parse('http://127.0.0.1:${second.port}/api/status'));
+    final res = await other.close();
+    await res.drain<void>();
+    expect(res.statusCode, 200);
+    await second.shutdown();
+    second.dispose();
   });
 }

@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../main.dart';
@@ -9,10 +11,46 @@ import 'theme.dart';
 /// How much room floating chrome (tab bar, mini player) takes at the
 /// bottom of a tab. Lists add it to their bottom padding so the last rows
 /// can scroll clear of the glass.
-double get dockSpace => 86 + (player.current == null ? 0 : 70);
+double get dockSpace =>
+    wideLayout ? (player.current == null ? 0 : 104) : 86 + (player.current == null ? 0 : 70);
 
-/// A sheet of "liquid glass": whatever is behind it shows through,
-/// blurred; a bright rim and a soft highlight give it thickness.
+/// True while the app is laid out for a wide desktop window: a sidebar
+/// and a full-width player bar instead of the bottom tab bar. Set by the
+/// shell on every layout.
+bool wideLayout = false;
+
+/// Windows at least this wide get the desktop layout.
+const double kWideBreakpoint = 900;
+
+/// Drives the slow flow of light inside every sheet of glass. One ticker
+/// for the whole app; it is started from `main`, so widget tests (which
+/// never start it) see still glass and can settle.
+class LiquidClock extends ChangeNotifier {
+  Ticker? _ticker;
+  double seconds = 0;
+
+  void start() {
+    _ticker ??= Ticker((elapsed) {
+      seconds = elapsed.inMicroseconds / 1e6;
+      notifyListeners();
+    })
+      ..start();
+  }
+}
+
+final liquidClock = LiquidClock();
+
+/// Deepens the colours seen through the glass, as real thick glass does.
+const _vivid = ColorFilter.matrix(<double>[
+  1.28, -.20, -.08, 0, 0, //
+  -.08, 1.16, -.08, 0, 0, //
+  -.08, -.20, 1.28, 0, 0, //
+  0, 0, 0, 1, 0,
+]);
+
+/// A sheet of liquid glass: whatever is behind it shows through, blurred
+/// and richer in colour; the edge bends light like a lens, and soft
+/// highlights drift slowly inside as if the glass were fluid.
 class Glass extends StatelessWidget {
   const Glass({
     super.key,
@@ -38,27 +76,33 @@ class Glass extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = BorderRadius.circular(radius);
-    final base = tint ?? const Color(0xFF2A2540);
+    final base = tint ?? const Color(0xFF2B2429);
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: r,
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .26), blurRadius: 22, offset: const Offset(0, 6))],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: .30), blurRadius: 30, offset: const Offset(0, 12)),
+          BoxShadow(color: Colors.black.withValues(alpha: .18), blurRadius: 4, offset: const Offset(0, 1)),
+        ],
       ),
       child: ClipRRect(
         borderRadius: r,
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          filter: ImageFilter.compose(
+            outer: _vivid,
+            inner: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          ),
           child: CustomPaint(
-            foregroundPainter: _RimPainter(radius),
+            foregroundPainter: _LiquidPainter(radius, identityHashCode(this) % 97 / 97),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color.lerp(base, Colors.white, .16)!.withValues(alpha: .50 * strength),
-                    base.withValues(alpha: .42 * strength),
-                    Color.lerp(base, Colors.black, .30)!.withValues(alpha: .50 * strength),
+                    Color.lerp(base, Colors.white, .26)!.withValues(alpha: .32 * strength),
+                    base.withValues(alpha: .22 * strength),
+                    Color.lerp(base, Colors.black, .25)!.withValues(alpha: .34 * strength),
                   ],
                 ),
               ),
@@ -71,45 +115,77 @@ class Glass extends StatelessWidget {
   }
 }
 
-/// The bright edge of the glass: light catches the top-left, fades along
-/// the sides and returns faintly at the bottom-right.
-class _RimPainter extends CustomPainter {
-  _RimPainter(this.radius);
+/// Everything that makes the sheet read as thick, wet glass: drifting
+/// light inside, a lens-like edge, and a rim whose bright spot slowly
+/// travels round the outline.
+class _LiquidPainter extends CustomPainter {
+  _LiquidPainter(this.radius, this.phase) : super(repaint: liquidClock);
   final double radius;
+
+  /// Offsets this sheet's motion so neighbours do not move in step.
+  final double phase;
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final shape = RRect.fromRectAndRadius(rect.deflate(.6), Radius.circular(radius - .6));
+    final rad = Radius.circular(math.max(0, radius - .6));
+    final shape = RRect.fromRectAndRadius(rect.deflate(.6), rad);
+    final t = liquidClock.seconds * .22 + phase * math.pi * 2;
+
+    canvas.save();
+    canvas.clipRRect(shape);
+    // Caustics: two pools of light sliding along the top and bottom edges.
+    final m = math.min(size.width, size.height);
+    void pool(double x, double y, double w, double h, double alpha) => canvas.drawOval(
+          Rect.fromCenter(center: Offset(x, y), width: w, height: h),
+          Paint()
+            ..color = Colors.white.withValues(alpha: alpha)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, m * .22),
+        );
+    pool(size.width * (.30 + .22 * math.sin(t)), size.height * .02, size.width * .62, m * .50, .11);
+    pool(size.width * (.72 + .18 * math.sin(t * .8 + 2)), size.height * 1.0, size.width * .55, m * .42, .06);
+    // Lens edge: light inside the top lip, shade inside the bottom lip.
+    final lip = math.min(m * .5, 14.0);
     canvas.drawRRect(
       shape,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0x99FFFFFF), Color(0x1AFFFFFF), Color(0x0DFFFFFF), Color(0x40FFFFFF)],
-          stops: [0, .35, .7, 1],
-        ).createShader(rect),
-    );
-    // Specular sheen across the upper part.
-    canvas.save();
-    canvas.clipRRect(shape);
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height * .5),
-      Paint()
+        ..strokeWidth = lip
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, lip * .55)
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0x1FFFFFFF), Color(0x00FFFFFF)],
-        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height * .5)),
+          colors: [Color(0x30FFFFFF), Color(0x00FFFFFF), Color(0x00000000), Color(0x2E000000)],
+          stops: [0, .4, .6, 1],
+        ).createShader(rect),
     );
     canvas.restore();
+
+    // Rim: a hairline that is brightest at a spot which drifts around.
+    final a = -math.pi * .75 + .5 * math.sin(t * .7);
+    canvas.drawRRect(
+      shape,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1
+        ..shader = SweepGradient(
+          transform: GradientRotation(a),
+          colors: const [
+            Color(0xD9FFFFFF),
+            Color(0x38FFFFFF),
+            Color(0x14FFFFFF),
+            Color(0x70FFFFFF),
+            Color(0x14FFFFFF),
+            Color(0x38FFFFFF),
+            Color(0xD9FFFFFF),
+          ],
+          stops: const [0, .14, .38, .5, .62, .86, 1],
+        ).createShader(rect),
+    );
   }
 
   @override
-  bool shouldRepaint(_RimPainter old) => old.radius != radius;
+  bool shouldRepaint(_LiquidPainter old) => old.radius != radius;
 }
 
 /// Shrinks slightly while pressed, like something soft being touched.
@@ -141,9 +217,9 @@ class _PressableState extends State<Pressable> {
         onTap: widget.onTap,
         onLongPress: widget.onLongPress,
         child: AnimatedScale(
-          scale: _down ? .95 : 1,
-          duration: const Duration(milliseconds: 110),
-          curve: Curves.easeOut,
+          scale: _down ? .94 : 1,
+          duration: Duration(milliseconds: _down ? 90 : 420),
+          curve: _down ? Curves.easeOut : Curves.elasticOut,
           child: widget.child,
         ),
       ),

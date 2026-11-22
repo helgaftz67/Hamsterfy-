@@ -202,6 +202,15 @@ class _ServerPanelState extends State<ServerPanel> {
                 Expanded(child: Text(c.problem!, style: const TextStyle(color: _red, fontSize: 13.5))),
               ],
             ),
+            if (c.portBusy)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: FilledButton.tonalIcon(
+                  onPressed: c.busy ? null : c.startOnFreePort,
+                  icon: const Icon(Icons.shuffle_rounded, size: 18),
+                  label: const Text('Запустить на свободном порту'),
+                ),
+              ),
           ],
           const SizedBox(height: 14),
           Wrap(

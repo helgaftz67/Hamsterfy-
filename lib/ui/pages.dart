@@ -122,14 +122,14 @@ class _HomePageState extends State<HomePage> {
                           children: [
                             _Quick(
                                 icon: Icons.favorite_rounded,
-                                tint: kAccent,
+                                tint: kRose,
                                 label: 'Избранное',
                                 onTap: () =>
                                     _push(TrackListPage(title: 'Избранное', tracks: () => library.favoriteTracks))),
                             const SizedBox(width: 8),
                             _Quick(
                                 icon: Icons.sensors_rounded,
-                                tint: kAmber,
+                                tint: kOrange,
                                 label: 'Радио',
                                 onTap: () => _push(const RadioPage())),
                           ],
@@ -139,14 +139,14 @@ class _HomePageState extends State<HomePage> {
                           children: [
                             _Quick(
                                 icon: Icons.download_done_rounded,
-                                tint: const Color(0xFF5ED4A8),
+                                tint: const Color(0xFF4FA3A0),
                                 label: 'На устройстве',
                                 onTap: () =>
                                     _push(TrackListPage(title: 'На устройстве', tracks: () => library.downloaded))),
                             const SizedBox(width: 8),
                             _Quick(
                                 icon: Icons.shuffle_rounded,
-                                tint: const Color(0xFFFF8FB1),
+                                tint: kDuskBlue,
                                 label: 'Вперемешку',
                                 onTap: empty
                                     ? null
@@ -260,18 +260,18 @@ class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
         child: Opacity(
           opacity: widget.enabled ? 1 : .5,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(40),
             child: GestureDetector(
               onTap: widget.enabled ? _tap : null,
               child: SizedBox(
-                height: 208,
+                height: 250,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
                     RepaintBoundary(
                       child: AnimatedBuilder(
                         animation: _drift,
-                        builder: (_, _) => CustomPaint(painter: AuroraPainter(_drift.value, active ? 1.0 : .55)),
+                        builder: (_, _) => CustomPaint(painter: DuskPainter(_drift.value, active ? 1.0 : .35)),
                       ),
                     ),
                     Padding(
@@ -293,17 +293,25 @@ class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
                           Text('Бесконечный микс из вашей коллекции',
                               style: TextStyle(color: Colors.white.withValues(alpha: .82), fontWeight: FontWeight.w500)),
                           const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.fromLTRB(14, 10, 20, 10),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(active ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.black, size: 26),
-                                const SizedBox(width: 6),
-                                Text(active ? 'Пауза' : 'Слушать',
-                                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 15)),
-                              ],
+                          // A glass pill: the sunset shows through it.
+                          Center(
+                            child: Glass(
+                              radius: 30,
+                              blur: 14,
+                              strength: .55,
+                              tint: const Color(0xFFFFFFFF),
+                              padding: const EdgeInsets.fromLTRB(18, 11, 24, 11),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(active ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                      color: Colors.white, size: 26),
+                                  const SizedBox(width: 8),
+                                  Text(active ? 'Пауза' : 'Слушать',
+                                      style: const TextStyle(
+                                          color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15.5)),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -337,31 +345,30 @@ class _Quick extends StatelessWidget {
           label: label,
           onTap: onTap,
           child: Container(
-            height: 60,
+            height: 66,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color.lerp(kSurface, tint, .16)!, kSurface],
+              borderRadius: BorderRadius.circular(24),
+              // Dark glass with the tile's colour glowing up from below.
+              gradient: RadialGradient(
+                center: const Alignment(-.2, 1.5),
+                radius: 1.25,
+                colors: [tint.withValues(alpha: .70), tint.withValues(alpha: .18), const Color(0xFF141216)],
+                stops: const [0, .45, 1],
               ),
-              border: Border.all(color: Colors.white.withValues(alpha: .07)),
+              border: Border.all(color: Colors.white.withValues(alpha: .10)),
             ),
             child: Row(
               children: [
-                const SizedBox(width: 10),
+                const SizedBox(width: 14),
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [tint.withValues(alpha: .55), tint.withValues(alpha: .22)],
-                    ),
+                    color: Colors.white.withValues(alpha: .14),
+                    border: Border.all(color: Colors.white.withValues(alpha: .22)),
                   ),
-                  child: Icon(icon, color: Colors.white, size: 22),
+                  child: Icon(icon, color: Colors.white, size: 20),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -500,7 +507,7 @@ class CatalogPage extends StatefulWidget {
   State<CatalogPage> createState() => _CatalogPageState();
 }
 
-enum _Show { all, full, device }
+enum _Show { all, device }
 
 /// Search tab: one field, one list. Results from the device, the user's
 /// server, Audius, the song catalog and Archive releases arrive together,
@@ -714,7 +721,6 @@ class _CatalogPageState extends State<CatalogPage> {
         final hits = [
           for (final h in r.hits)
             if (_show == _Show.all ||
-                (_show == _Show.full && (h.availability == Availability.offline || h.availability == Availability.full)) ||
                 (_show == _Show.device && h.availability == Availability.offline))
               h,
         ];
@@ -727,7 +733,7 @@ class _CatalogPageState extends State<CatalogPage> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
             child: Row(
               children: [
-                for (final (show, label) in [(_Show.all, 'Все'), (_Show.full, 'Целиком'), (_Show.device, 'На устройстве')])
+                for (final (show, label) in [(_Show.all, 'Все'), (_Show.device, 'На устройстве')])
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(

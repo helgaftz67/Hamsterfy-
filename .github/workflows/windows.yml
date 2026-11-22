@@ -38,14 +38,14 @@ jobs:
           path: build/windows/x64/runner/Release
           if-no-files-found: error
       # The server's control panel is the same project with another entry
-      # point. It opens as a wide desktop window rather than a phone-sized one.
+      # point; it gets its own window title.
       - name: Build the server control panel
         shell: pwsh
         run: |
           $runner = 'windows/runner/main.cpp'
           $code = Get-Content $runner -Raw
-          if ($code -notmatch 'Size size\(480, 900\)') { Write-Error 'Window size line not found'; exit 1 }
-          $code.Replace('Size size(480, 900)', 'Size size(1180, 780)').Replace('L"Hamsterfy"', 'L"Hamsterfy Server"') | Set-Content $runner
+          if ($code -notmatch 'L"Hamsterfy"') { Write-Error 'Window title line not found'; exit 1 }
+          $code.Replace('L"Hamsterfy"', 'L"Hamsterfy Server"') | Set-Content $runner
           flutter build windows --release -t lib/server_panel/main.dart
           git checkout -- $runner
       - uses: actions/upload-artifact@v4

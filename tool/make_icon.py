@@ -78,12 +78,12 @@ def mascots(scale=1.0):
     sh = Image.new('RGBA', (N, N), (0, 0, 0, 0))
     ds = ImageDraw.Draw(sh)
     for sx in (-1, 1):
-        ell(ds, c + sx * off, cy + s * 0.34, s * 1.2, s * 0.95, (30, 14, 90, 110))
+        ell(ds, c + sx * off, cy + s * 0.34, s * 1.2, s * 0.95, (40, 20, 24, 110))
     layer.alpha_composite(sh.filter(ImageFilter.GaussianBlur(N * 0.014)))
-    amber = (255, 185, 56, 255)
+    amber = (255, 231, 163, 255)  # cream, as in the app
     black = Image.new('RGBA', (N, N), (0, 0, 0, 0))
-    hamster(black, c + off, cy, s, (34, 29, 50, 255), (62, 55, 86, 255), (126, 108, 178, 255),
-            (20, 16, 32, 255), (255, 255, 255, 255), (170, 110, 190, 255), (255, 176, 196, 255),
+    hamster(black, c + off, cy, s, (34, 29, 50, 255), (62, 55, 86, 255), (154, 120, 150, 255),
+            (20, 16, 32, 255), (255, 255, 255, 255), (199, 122, 156, 255), (255, 176, 196, 255),
             (252, 250, 255, 255), (252, 250, 255, 255), amber, ring=(250, 248, 255, 255))
     layer.alpha_composite(black.rotate(8, resample=Image.BICUBIC, center=(c + off, cy)))
     white = Image.new('RGBA', (N, N), (0, 0, 0, 0))
@@ -94,12 +94,31 @@ def mascots(scale=1.0):
     # notes floating between and above them
     d = ImageDraw.Draw(layer)
     note(d, c - s * 0.22, cy - s * 1.20, s * 0.62, (255, 255, 255, 255))
-    note(d, c + s * 0.42, cy - s * 1.62, s * 0.44, (255, 226, 150, 255))
+    note(d, c + s * 0.42, cy - s * 1.62, s * 0.44, (255, 240, 186, 255))
     return layer
 
 
 def background():
-    return gradient(N, (176, 160, 255), (92, 62, 232)).convert('RGBA')
+    """Dusk: slate blue through mauve to peach and orange, with the dark
+    of the horizon sitting in the glow at the bottom."""
+    stops = [(0.0, (74, 84, 121)), (0.34, (111, 102, 136)), (0.62, (185, 130, 133)),
+             (0.84, (240, 150, 106)), (1.0, (242, 110, 46))]
+    img = Image.new('RGB', (N, N))
+    px = img.load()
+    for y in range(N):
+        t = y / (N - 1)
+        for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
+            if t <= t1:
+                k = (t - t0) / (t1 - t0)
+                row = tuple(round(c0[i] + (c1[i] - c0[i]) * k) for i in range(3))
+                break
+        for x in range(N):
+            px[x, y] = row
+    img = img.convert('RGBA')
+    horizon = Image.new('RGBA', (N, N), (0, 0, 0, 0))
+    ell(ImageDraw.Draw(horizon), N * 0.5, N * 0.97, N * 0.34, N * 0.085, (26, 15, 12, 205))
+    img.alpha_composite(horizon.filter(ImageFilter.GaussianBlur(N * 0.03)))
+    return img
 
 
 out = sys.argv[1]

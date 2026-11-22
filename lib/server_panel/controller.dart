@@ -71,6 +71,9 @@ class ServerController extends ChangeNotifier {
 
   /// Why the last start failed, in words for the user; null when fine.
   String? problem;
+
+  /// True when the last start failed because the port was taken.
+  bool portBusy = false;
   bool busy = false;
 
   File get _settingsFile => File('${dataDir.path}${Platform.pathSeparator}server.json');
@@ -123,6 +126,7 @@ class ServerController extends ChangeNotifier {
     if (running || busy) return;
     busy = true;
     problem = null;
+    portBusy = false;
     notifyListeners();
     try {
       await storageDir.create(recursive: true);
@@ -138,10 +142,16 @@ class ServerController extends ChangeNotifier {
       await server.start(port: settings.port);
       _tick = Timer.periodic(const Duration(seconds: 1), (_) => notifyListeners());
       await refresh();
-    } on SocketException catch (e) {
+    } on SocketException {
       await _dropServer();
-      problem = 'Порт ${settings.port} занят другой программой (${e.osError?.message ?? e.message}). '
-          'Закройте её или выберите другой порт в настройках.';
+      portBusy = true;
+      // Ports belong to this computer alone, so whatever holds this one
+      // runs here. Most often it is a second copy of this very program.
+      problem = await _isHamsterfyOn(settings.port)
+          ? 'Hamsterfy Server уже запущен на этом компьютере и занимает порт ${settings.port}. '
+              'Закройте лишнее окно (или процесс hamsterfy в Диспетчере задач) либо запустите этот на свободном порту.'
+          : 'Порт ${settings.port} занят другой программой на этом компьютере. '
+              'Закройте её или запустите сервер на свободном порту.';
     } on ApiError catch (e) {
       await _dropServer();
       problem = e.message;
@@ -150,6 +160,36 @@ class ServerController extends ChangeNotifier {
       problem = 'Сервер не запустился: $e';
     } finally {
       busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Whether the program answering on [port] of this computer is another
+  /// Hamsterfy server.
+  Future<bool> _isHamsterfyOn(int port) async {
+    final probe = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final req = await probe.getUrl(Uri.parse('http://127.0.0.1:$port/api/status'));
+      final res = await req.close().timeout(const Duration(seconds: 3));
+      final body = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 3));
+      // A protected server answers 401 with our error shape; an open one
+      // answers with its status.
+      return body.contains('"running"') || body.contains('"unauthorized"');
+    } catch (_) {
+      return false;
+    } finally {
+      probe.close(force: true);
+    }
+  }
+
+  /// Starts on whichever port the system has free and remembers it.
+  Future<void> startOnFreePort() async {
+    if (running || busy) return;
+    settings.port = 0;
+    await start();
+    if (running) {
+      settings.port = port!;
+      await saveSettings();
       notifyListeners();
     }
   }
