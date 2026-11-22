@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../audius.dart';
 import '../catalog.dart';
 import '../models.dart';
+import 'link_import.dart';
 import '../search/search_service.dart';
 
 /// A problem the server reports to the client as JSON:
@@ -145,6 +146,22 @@ class MusicServer {
   // ---- Music folder --------------------------------------------------------
 
   /// Reads the music folder. Files without readable tags keep their name.
+  /// Used by [importLink]; tests put a fake in its place.
+  LinkImporter importer = LinkImporter();
+
+  /// Imports one openly licensed recording from a link the owner gave.
+  Future<Map<String, dynamic>> importLink(String? link) async {
+    try {
+      final title = await importer.import(link, music);
+      final tracks = await scan();
+      event('info', 'Импортировано по ссылке: $title');
+      return {'ok': true, 'title': title, 'tracks': tracks};
+    } on ApiError catch (e) {
+      log('import', e.message);
+      rethrow;
+    }
+  }
+
   Future<int> scan() async {
     if (!await music.exists()) {
       throw ApiError(500, 'music_folder_missing', 'Папка с музыкой не найдена: ${music.path}');
@@ -453,12 +470,12 @@ class MusicServer {
       final action = seg.isEmpty ? '' : seg.first;
       final sub = seg.length > 1 ? seg[1] : '';
       // Actions that change something want POST; reading wants GET.
-      const actions = {'rescan', 'restart'};
+      const actions = {'rescan', 'restart', 'import'};
       final changes = actions.contains(action) || (action == 'cache' && sub == 'clear');
       final get = req.method == 'GET' || req.method == 'HEAD';
       if (changes ? req.method != 'POST' : !get) {
         throw ApiError(405, 'method_not_allowed',
-            'Метод ${req.method} здесь не поддерживается: чтение — GET, действия rescan и cache/clear — POST.');
+            'Метод ${req.method} здесь не поддерживается: чтение — GET, действия rescan, import и cache/clear — POST.');
       }
       switch (action) {
         case '':
@@ -487,6 +504,8 @@ class MusicServer {
           await _json(res, await search(req.uri.queryParameters['q'], req.uri.queryParameters['sources']));
         case 'rescan':
           await _json(res, {'ok': true, 'tracks': await scan()});
+        case 'import':
+          await _json(res, await importLink(req.uri.queryParameters['url']));
         case 'save':
           await _json(res, await save(req.uri.queryParameters['id']));
         case 'saved':

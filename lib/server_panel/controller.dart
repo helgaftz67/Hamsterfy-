@@ -235,6 +235,21 @@ class ServerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Imports an openly licensed recording by link; returns what to tell
+  /// the user.
+  Future<String> importLink(String link) async {
+    final server = _server;
+    if (server == null) return 'Сначала запустите сервер.';
+    try {
+      final r = await server.importLink(link);
+      await refresh();
+      return 'Добавлено: ${r['title']}';
+    } on ApiError catch (e) {
+      await refresh();
+      return e.message;
+    }
+  }
+
   Future<void> rescan() async {
     await _server?.scan();
     await refresh();

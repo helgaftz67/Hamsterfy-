@@ -346,6 +346,11 @@ class _ServerPanelState extends State<ServerPanel> {
                 label: const Text('Хранилище'),
               ),
               OutlinedButton.icon(
+                onPressed: c.running ? () => _importLink(context, c) : null,
+                icon: const Icon(Icons.link_rounded, size: 18),
+                label: const Text('Импорт по ссылке'),
+              ),
+              OutlinedButton.icon(
                 onPressed: c.running ? c.rescan : null,
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('Перечитать папку'),
@@ -565,4 +570,55 @@ class _SettingsDialogState extends State<_SettingsDialog> {
       ],
     );
   }
+}
+
+
+/// Asks for a link and imports it; the server refuses anything that is not
+/// openly licensed and the reason is shown here.
+Future<void> _importLink(BuildContext context, ServerController c) async {
+  final field = TextEditingController();
+  String? note;
+  var busy = false;
+  await showDialog<void>(
+    context: context,
+    builder: (d) => StatefulBuilder(
+      builder: (d, set) => AlertDialog(
+        title: const Text('Импорт по ссылке'),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Только записи, которые автор выложил под Creative Commons или в общественное достояние. '
+                  'Остальные сервер отклонит.'),
+              const SizedBox(height: 14),
+              TextField(controller: field, autofocus: true, decoration: const InputDecoration(hintText: 'https://…')),
+              if (busy) const Padding(padding: EdgeInsets.only(top: 14), child: LinearProgressIndicator()),
+              if (note != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(note!)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: busy ? null : () => Navigator.pop(d), child: const Text('Закрыть')),
+          FilledButton(
+            onPressed: busy
+                ? null
+                : () async {
+                    set(() {
+                      busy = true;
+                      note = null;
+                    });
+                    final text = await c.importLink(field.text);
+                    set(() {
+                      busy = false;
+                      note = text;
+                    });
+                  },
+            child: const Text('Импортировать'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
