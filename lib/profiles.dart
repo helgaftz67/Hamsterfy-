@@ -153,6 +153,8 @@ class Profiles extends ChangeNotifier {
     final lib = File('${_dir.path}/${Library.libraryFileName(p.id)}');
     final music = Directory('${_dir.path}/${Library.musicDirName(p.id)}');
     if (await lib.exists()) await lib.delete();
+    final search = File('${_dir.path}/${Library.indexFileName(p.id)}');
+    if (await search.exists()) await search.delete();
     if (await music.exists()) await music.delete(recursive: true);
     notifyListeners();
   }

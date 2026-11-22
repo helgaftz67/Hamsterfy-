@@ -84,8 +84,10 @@ class MyServer {
     return body['tracks'] as int? ?? 0;
   }
 
-  Future<ServerSearch> search(String query) async {
-    final body = await _get('/search', {'q': query});
+  /// Searches through the server. [sources] narrows it, e.g. "library"
+  /// for the server's own folder only.
+  Future<ServerSearch> search(String query, {String? sources}) async {
+    final body = await _get('/search', {'q': query, 'sources': ?sources});
     return ServerSearch(
       [for (final r in (body['results'] as List? ?? const [])) track(r as Map<String, dynamic>)],
       [

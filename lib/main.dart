@@ -12,6 +12,7 @@ import 'my_server.dart';
 import 'player.dart';
 import 'profiles.dart';
 import 'radio.dart';
+import 'search/search_service.dart';
 import 'songs.dart';
 import 'ui/pages.dart';
 import 'ui/player_ui.dart';
@@ -28,6 +29,22 @@ final catalog = Catalog();
 final radio = RadioDirectory();
 final songs = SongSearch();
 final audius = Audius();
+
+/// One search over the device, the user's server, Audius, the song
+/// catalog and Internet Archive releases.
+SearchService get searchService => SearchService(
+      sources: [
+        TrackSource(SearchSource.local,
+            (q) async => (await library.searchLocal(q)).where((t) => !t.isRadio && !t.isPreview && !t.isUnavailable).toList(),
+            timeout: const Duration(seconds: 3)),
+        // The server is asked only for its own folder: the app queries the
+        // public catalogs itself, so nothing is fetched twice.
+        if (myServer != null) TrackSource(SearchSource.server, (q) async => (await myServer!.search(q, sources: 'library')).tracks),
+        TrackSource(SearchSource.audius, audius.search),
+        TrackSource(SearchSource.previews, songs.search),
+      ],
+      albumSearch: catalog.search,
+    );
 
 /// Client for the user's own server, or null when none is set up.
 MyServer? get myServer => library.hasServer ? MyServer(library.serverUrl, token: library.serverToken) : null;

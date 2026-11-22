@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'models.dart';
+import 'search/local_index.dart';
 
 /// The user's collection: tracks, favourites, listening history and
 /// downloads. Everything is kept on the device in one JSON file.
@@ -34,6 +35,28 @@ class Library extends ChangeNotifier {
   bool autoCache = true;
   int cacheLimitMb = 2048;
 
+  /// Recent search queries, newest first.
+  final List<String> searches = [];
+
+  void rememberSearch(String query) {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    searches.removeWhere((s) => s.toLowerCase() == q.toLowerCase());
+    searches.insert(0, q);
+    if (searches.length > 12) searches.removeRange(12, searches.length);
+    _changed();
+  }
+
+  void forgetSearch(String query) {
+    searches.remove(query);
+    _changed();
+  }
+
+  void clearSearches() {
+    searches.clear();
+    _changed();
+  }
+
   /// Address and access key of the user's own server, if they run one.
   String serverUrl = '';
   String serverToken = '';
@@ -44,6 +67,41 @@ class Library extends ChangeNotifier {
 
   late Directory _dir;
   bool _opened = false;
+
+  /// SQLite index of this profile's tracks; null until a profile is open
+  /// (and in tests that never open one).
+  LocalIndex? index;
+  Future<void>? _indexing;
+
+  static String indexFileName(String profile) => profile == 'main' ? 'search.db' : 'search_$profile.db';
+
+  /// Brings the index in line with the collection. Calls made while a
+  /// sync is running are folded into one follow-up run.
+  Future<void> syncIndex() {
+    final db = index;
+    if (db == null) return Future.value();
+    return _indexing = (_indexing ?? Future.value()).then((_) async {
+      try {
+        await db.sync(tracks.values.toList());
+      } catch (_) {
+        // Search falls back to scanning the list if the index is unusable.
+      }
+    });
+  }
+
+  /// Local search: through the index when it is open, otherwise by
+  /// scanning the collection.
+  Future<List<Track>> searchLocal(String query) async {
+    final db = index;
+    if (db != null) {
+      try {
+        await _indexing;
+        final ids = await db.search(query);
+        return [for (final id in ids) if (tracks[id] != null) tracks[id]!];
+      } catch (_) {}
+    }
+    return filter(tracks.values.toList(), query);
+  }
   String _profile = 'main';
   Timer? _saveTimer;
   final _random = Random();
@@ -78,18 +136,26 @@ class Library extends ChangeNotifier {
     cacheLimitMb = 2048;
     serverUrl = '';
     serverToken = '';
+    searches.clear();
     downloading.clear();
     await Directory(_music).create(recursive: true);
-    if (!await _file.exists()) {
-      notifyListeners();
-      return;
-    }
+    await _indexing;
+    await index?.close().catchError((_) {});
+    index = null;
     try {
-      restore(jsonDecode(await _file.readAsString()) as Map<String, dynamic>);
+      index = await LocalIndex.open('${_dir.path}/${indexFileName(profile)}');
     } catch (_) {
-      // A damaged file must not stop the app from opening.
+      // Without the index, local search scans the list instead.
+    }
+    if (await _file.exists()) {
+      try {
+        restore(jsonDecode(await _file.readAsString()) as Map<String, dynamic>);
+      } catch (_) {
+        // A damaged file must not stop the app from opening.
+      }
     }
     notifyListeners();
+    unawaited(syncIndex());
     unawaited(trimCache());
   }
 
@@ -106,6 +172,9 @@ class Library extends ChangeNotifier {
     autoCache = j['autoCache'] as bool? ?? true;
     cacheLimitMb = j['cacheLimitMb'] as int? ?? 2048;
     serverUrl = j['serverUrl'] as String? ?? '';
+    searches
+      ..clear()
+      ..addAll((j['searches'] as List? ?? const []).cast<String>());
     serverToken = j['serverToken'] as String? ?? '';
     (j['playlists'] as Map? ?? const {}).forEach((name, ids) {
       playlists[name as String] = (ids as List).cast<String>().toList();
@@ -122,6 +191,7 @@ class Library extends ChangeNotifier {
         'autoCache': autoCache,
         'cacheLimitMb': cacheLimitMb,
         'serverUrl': serverUrl,
+        'searches': searches,
         'serverToken': serverToken,
       };
 
@@ -136,6 +206,7 @@ class Library extends ChangeNotifier {
       try {
         await file.writeAsString(data);
       } catch (_) {}
+      await syncIndex();
     });
   }
 
@@ -315,7 +386,7 @@ class Library extends ChangeNotifier {
   }
 
   Future<Track> _describe(String id, File file, {required String fallbackTitle}) async {
-    String title = fallbackTitle, artist = 'Неизвестный исполнитель', album = '';
+    String title = fallbackTitle, artist = 'Неизвестный исполнитель', album = '', genre = '';
     String? art;
     var durationMs = 0;
     try {
@@ -323,6 +394,7 @@ class Library extends ChangeNotifier {
       if ((meta.title ?? '').trim().isNotEmpty) title = meta.title!.trim();
       if ((meta.artist ?? '').trim().isNotEmpty) artist = meta.artist!.trim();
       album = (meta.album ?? '').trim();
+      genre = meta.genres.map((g) => g.trim()).where((g) => g.isNotEmpty).join(', ');
       durationMs = meta.duration?.inMilliseconds ?? 0;
       if (meta.pictures.isNotEmpty) {
         final cover = File('${file.path}.cover');
@@ -332,7 +404,8 @@ class Library extends ChangeNotifier {
     } catch (_) {
       // Files without readable tags still play; they keep the file name.
     }
-    return Track(id: id, title: title, artist: artist, album: album, path: file.path, art: art, durationMs: durationMs);
+    return Track(
+        id: id, title: title, artist: artist, album: album, genre: genre, path: file.path, art: art, durationMs: durationMs);
   }
 
   /// Saves a catalog track to the device for offline listening. With [auto]

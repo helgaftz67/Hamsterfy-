@@ -8,6 +8,7 @@ import 'package:hamsterfy/models.dart';
 import 'package:hamsterfy/player.dart';
 import 'package:hamsterfy/profiles.dart';
 import 'package:hamsterfy/radio.dart';
+import 'package:hamsterfy/search/local_index.dart';
 import 'package:hamsterfy/songs.dart';
 
 class FakePlayer implements Player {
@@ -269,6 +270,43 @@ void main() {
       expect(lib.stale(now: now, keepId: 'playing').map((t) => t.id), ['old']);
       expect(lib.stale(now: now).map((t) => t.id).toSet(), {'old', 'playing'});
       expect(lib.stale(now: now, days: 2).map((t) => t.id).toSet(), {'old', 'oldButPlayed', 'fresh', 'playing'});
+    });
+
+    test('search history: newest first, no repeats, capped, saved with the profile', () {
+      final lib = Library();
+      for (var i = 0; i < 14; i++) {
+        lib.rememberSearch('запрос $i');
+      }
+      expect(lib.searches.length, 12);
+      expect(lib.searches.first, 'запрос 13');
+      lib.rememberSearch('ЗАПРОС 5');
+      expect(lib.searches.first, 'ЗАПРОС 5');
+      expect(lib.searches.where((s) => s.toLowerCase() == 'запрос 5').length, 1);
+      lib.rememberSearch('   ');
+      expect(lib.searches.length, 12);
+      final copy = Library()..restore(lib.snapshot());
+      expect(copy.searches, lib.searches);
+      copy.forgetSearch('ЗАПРОС 5');
+      expect(copy.searches.contains('ЗАПРОС 5'), isFalse);
+      copy.clearSearches();
+      expect(copy.searches, isEmpty);
+    });
+
+    test('local search uses the index when open and scans the list otherwise', () async {
+      final lib = Library();
+      lib.tracks['a'] = Track(id: 'a', title: 'Ночной город', artist: 'Ветер', genre: 'Synthwave', path: '/m/a.mp3');
+      lib.tracks['b'] = Track(id: 'b', title: 'Утро', artist: 'Ветер', path: '/m/b.mp3');
+      // No index: plain scan (it does not know about genres).
+      expect((await lib.searchLocal('ночной')).single.id, 'a');
+      expect(await lib.searchLocal('synthwave'), isEmpty);
+      lib.index = await LocalIndex.open();
+      await lib.syncIndex();
+      expect((await lib.searchLocal('synth')).single.id, 'a');
+      expect((await lib.searchLocal('ветер')).length, 2);
+      lib.tracks.remove('a');
+      await lib.syncIndex();
+      expect(await lib.searchLocal('ночной'), isEmpty);
+      await lib.index!.close();
     });
 
     test('snapshot round-trips favourites and plays', () {

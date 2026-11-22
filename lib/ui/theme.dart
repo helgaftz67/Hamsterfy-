@@ -217,7 +217,14 @@ class Cover extends StatelessWidget {
 /// One row in any track list: cover, title, artist, state and a menu.
 class TrackTile extends StatelessWidget {
   const TrackTile(this.track,
-      {super.key, required this.onTap, this.playlist, this.selected, this.onLongPress, this.playButton = false});
+      {super.key,
+      required this.onTap,
+      this.playlist,
+      this.selected,
+      this.onLongPress,
+      this.playButton = false,
+      this.tag,
+      this.tagColor});
   final Track track;
   final VoidCallback onTap;
 
@@ -227,6 +234,11 @@ class TrackTile extends StatelessWidget {
   /// Non-null while the list is in selection mode: whether this row is ticked.
   final bool? selected;
   final VoidCallback? onLongPress;
+
+  /// Short label before the artist, e.g. where a search result comes from.
+  /// Replaces the row's own markers when set.
+  final String? tag;
+  final Color? tagColor;
 
   /// Shows an explicit play button on rows that can be played. Rows that
   /// cannot are dimmed and get no button.
@@ -267,7 +279,15 @@ class TrackTile extends StatelessWidget {
                   fontSize: 15.5)),
           subtitle: Row(
             children: [
-              if (t.isPreview) ...[
+              if (tag != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(color: kSunken, borderRadius: BorderRadius.circular(4)),
+                  child: Text(tag!,
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: tagColor ?? kMuted)),
+                ),
+              ] else if (t.isPreview) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   margin: const EdgeInsets.only(right: 6),
@@ -282,7 +302,7 @@ class TrackTile extends StatelessWidget {
                 const SizedBox(width: 4),
               ],
               Expanded(
-                child: Text(t.isUnavailable ? '${t.artist} · нет свободного прослушивания' : t.artist,
+                child: Text(t.isUnavailable && tag == null ? '${t.artist} · нет свободного прослушивания' : t.artist,
                     maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
             ],

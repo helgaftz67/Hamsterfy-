@@ -6,6 +6,7 @@ class Track {
     required this.title,
     required this.artist,
     this.album = '',
+    this.genre = '',
     this.url,
     this.path,
     this.art,
@@ -21,6 +22,9 @@ class Track {
   final String title;
   final String artist;
   final String album;
+
+  /// Genre from the file's tags, empty when unknown.
+  final String genre;
 
   /// Remote stream address, if the track comes from the catalog.
   final String? url;
@@ -71,6 +75,7 @@ class Track {
         'title': title,
         'artist': artist,
         'album': album,
+        'genre': genre,
         'url': url,
         'path': path,
         'art': art,
@@ -87,6 +92,7 @@ class Track {
         title: j['title'] as String? ?? '',
         artist: j['artist'] as String? ?? '',
         album: j['album'] as String? ?? '',
+        genre: j['genre'] as String? ?? '',
         url: j['url'] as String?,
         path: j['path'] as String?,
         art: j['art'] as String?,

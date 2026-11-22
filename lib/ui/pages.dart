@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../library.dart';
-import '../my_server.dart';
+import '../search/search_service.dart';
 import '../main.dart';
 import '../models.dart';
 import 'aurora.dart';
@@ -464,10 +465,6 @@ class _ShelfCard extends StatelessWidget {
 
 // ------------------------------------------------------------- Catalog ----
 
-/// Where the search tab looks: whole tracks on Audius, previews of every
-/// song, or free releases on the Internet Archive.
-enum _Source { server, audius, previews, free }
-
 class CatalogPage extends StatefulWidget {
   const CatalogPage({super.key});
 
@@ -475,41 +472,65 @@ class CatalogPage extends StatefulWidget {
   State<CatalogPage> createState() => _CatalogPageState();
 }
 
-/// Search tab: every song in the world catalog (previews), or the free
-/// catalog where whole releases can be played and downloaded.
+enum _Show { all, full, device }
+
+/// Search tab: one field, one list. Results from the device, the user's
+/// server, Audius, the song catalog and Archive releases arrive together,
+/// ranked, with duplicates joined and each row marked with its source.
 class _CatalogPageState extends State<CatalogPage> {
   final _query = TextEditingController();
-  late _Source _source = library.hasServer ? _Source.server : _Source.audius;
-  Future<List<Track>>? _songs;
+  final _focus = FocusNode();
+  Timer? _typing;
+  Future<SearchResults>? _results;
+  List<String> _suggestions = const [];
+  _Show _show = _Show.all;
 
-  /// Sources the server could not reach during the last search.
-  List<String> _problems = const [];
-  Future<List<Album>>? _albums;
-
-  void _search() => setState(() {
-        final q = _query.text;
-        _problems = const [];
-        switch (_source) {
-          case _Source.server:
-            _songs = q.trim().isEmpty
-                ? null
-                : myServer!.search(q).then((found) {
-                    if (mounted) setState(() => _problems = found.problems);
-                    return found.tracks;
-                  });
-          case _Source.audius:
-            _songs = q.trim().isEmpty ? null : audius.search(q);
-          case _Source.previews:
-            _songs = q.trim().isEmpty ? null : songs.search(q);
-          case _Source.free:
-            _albums = catalog.search(q);
-        }
-      });
+  /// The text the visible results belong to.
+  String _searched = '';
 
   @override
   void dispose() {
+    _typing?.cancel();
     _query.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  /// Typing: local suggestions at once, the full search after a pause.
+  void _typed(String text) {
+    _typing?.cancel();
+    final q = text.trim();
+    if (q.isEmpty) {
+      setState(() {
+        _results = null;
+        _searched = '';
+        _suggestions = const [];
+      });
+      return;
+    }
+    library.index?.suggest(q).then((found) {
+      if (mounted && _query.text.trim() == q) setState(() => _suggestions = found);
+    }).catchError((_) {});
+    _typing = Timer(const Duration(milliseconds: 450), () => _run(remember: false));
+  }
+
+  void _run({bool remember = true}) {
+    _typing?.cancel();
+    final q = _query.text.trim();
+    if (q.isEmpty) return;
+    if (remember) library.rememberSearch(q);
+    setState(() {
+      _searched = q;
+      _suggestions = const [];
+      _results = searchService.search(q);
+    });
+  }
+
+  void _use(String text) {
+    _query.text = text;
+    _query.selection = TextSelection.collapsed(offset: text.length);
+    _focus.unfocus();
+    _run();
   }
 
   @override
@@ -525,147 +546,206 @@ class _CatalogPageState extends State<CatalogPage> {
               child: Text('Поиск', style: kTitle),
             ),
             _SearchField(
-                controller: _query,
-                hint: _source == _Source.free ? 'Исполнитель, релиз или жанр' : 'Песня или исполнитель',
-                onSearch: _search),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-              child: Row(
-                children: [
-                  for (final (source, label) in [
-                    if (library.hasServer) (_Source.server, 'Мой сервер'),
-                    (_Source.audius, 'Целиком · Audius'),
-                    (_Source.previews, 'Все песни · 30 сек'),
-                    (_Source.free, 'Свободные релизы'),
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(label),
-                        selected: _source == source,
-                        onSelected: (_) {
-                          _source = source;
-                          _search();
-                        },
-                      ),
-                    ),
-                ],
+              controller: _query,
+              focusNode: _focus,
+              hint: 'Песня, исполнитель, альбом или жанр',
+              onSearch: _run,
+              onChanged: _typed,
+            ),
+            Expanded(
+              child: ListenableBuilder(
+                listenable: library,
+                builder: (context, _) {
+                  if (_suggestions.isNotEmpty && _query.text.trim() != _searched) return _suggestionList();
+                  if (_results == null) return _history();
+                  return _resultList();
+                },
               ),
             ),
-            Expanded(child: _source == _Source.free ? _albumList() : _songList()),
           ],
         ),
       ),
     );
   }
 
-  Widget _songList() {
-    final full = _source == _Source.audius || _source == _Source.server;
-    if (_songs == null) {
-      return _Message(_source == _Source.server
-          ? 'Один поиск сразу по папке вашего сервера, Audius и каталогу песен. Сначала показывается то, что играет целиком.'
-          : full
-          ? 'Введите название трека или имя исполнителя. Здесь музыка с Audius, которую артисты выложили сами: она играет целиком.'
-          : 'Найдётся любая песня. Трек из вашей медиатеки сыграет целиком, остальные — 30-секундным фрагментом со ссылкой на полную версию.');
-    }
-    return ListenableBuilder(
-      listenable: library,
-      builder: (context, _) => FutureBuilder<List<Track>>(
-        future: _songs,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-          if (snap.hasError) {
-            return _Message(
-                snap.error is ServerProblem
-                    ? snap.error.toString()
-                    : 'Поиск не отвечает. Проверьте подключение к интернету.',
-                action: 'Повторить',
-                onAction: _search);
-          }
-          final seen = <String>{};
-          final List<Track> all;
-          if (full) {
-            // Saved copies replace search rows, so likes and downloads show.
-            all = [for (final t in snap.data ?? const <Track>[]) if (seen.add(t.id)) library.tracks[t.id] ?? t];
-          } else {
-            // Songs the user already owns play in full instead of the preview.
-            final found = [
-              for (final t in snap.data ?? const <Track>[])
-                if (seen.add((library.match(t) ?? t).id)) library.match(t) ?? library.tracks[t.id] ?? t,
-            ];
-            final own = Library.filter(library.songs, _query.text).where((t) => seen.add(t.id)).toList();
-            all = [...own, ...found];
-          }
-          if (all.isEmpty) {
-            return _Message(full
-                ? 'На Audius такого нет. Проверьте написание или поищите во вкладке «Все песни».'
-                : 'Ничего не нашлось. Проверьте написание или попробуйте только имя исполнителя.');
-          }
-          final notes = _source == _Source.server ? _problems : const <String>[];
-          return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount: all.length + notes.length,
-            itemBuilder: (context, i) {
-              if (i < notes.length) {
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.error_outline_rounded, size: 18, color: kAmber),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(notes[i], style: const TextStyle(color: kAmber, fontSize: 13))),
-                    ],
-                  ),
-                );
-              }
-              final n = i - notes.length;
-              return TrackTile(all[n], playButton: full, onTap: () => player.playAll(all, start: n));
-            },
-          );
-        },
-      ),
+  Widget _suggestionList() {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        for (final s in _suggestions)
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.north_west_rounded, size: 18, color: kMuted),
+            title: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
+            onTap: () => _use(s),
+          ),
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.search_rounded, size: 18, color: kAccent),
+          title: Text('Искать «${_query.text.trim()}» везде',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, color: kAccent)),
+          onTap: _run,
+        ),
+      ],
     );
   }
 
-  Widget _albumList() {
-    return FutureBuilder<List<Album>>(
-      future: _albums,
+  Widget _history() {
+    final recent = library.searches;
+    if (recent.isEmpty) {
+      return const _Message(
+          'Один поиск сразу по вашей музыке, Audius, каталогу песен и свободным релизам. Сначала показывается то, что играет целиком.');
+    }
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 8, 0),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text('Недавние запросы', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(onPressed: library.clearSearches, child: const Text('Очистить')),
+            ],
+          ),
+        ),
+        for (final s in recent)
+          ListTile(
+            leading: const Icon(Icons.history_rounded, color: kMuted),
+            title: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: IconButton(
+              tooltip: 'Убрать из истории',
+              icon: const Icon(Icons.close_rounded, size: 18, color: kMuted),
+              onPressed: () => library.forgetSearch(s),
+            ),
+            onTap: () => _use(s),
+          ),
+      ],
+    );
+  }
+
+  /// Label and colour for a result: where it is and how it plays.
+  static (String, Color) _tag(SearchHit h) => switch (h.availability) {
+        Availability.offline => ('На устройстве', const Color(0xFF5ED4A8)),
+        Availability.full => (h.source.label, kAccent),
+        Availability.preview => ('30 сек', kAmber),
+        Availability.unavailable => ('${h.source.label} · недоступен', kMuted),
+      };
+
+  Widget _resultList() {
+    return FutureBuilder<SearchResults>(
+      future: _results,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
         if (snap.hasError) {
-          return _Message('Каталог не отвечает. Проверьте подключение к интернету.', action: 'Повторить', onAction: _search);
+          return _Message('Поиск не сработал. Попробуйте ещё раз.', action: 'Повторить', onAction: _run);
         }
-        final albums = snap.data ?? const [];
-        if (albums.isEmpty) {
-          return const _Message(
-              'В свободном каталоге этого нет: здесь релизы под свободными лицензиями и концертные записи. Попробуйте вкладки «Целиком · Audius» или «Все песни».');
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 24),
-          itemCount: albums.length,
-          itemBuilder: (context, i) {
-            final a = albums[i];
-            return ListTile(
-              leading: Cover(a.art, size: 52, seed: a.id),
-              title: Text(a.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: const Icon(Icons.chevron_right_rounded, color: kMuted),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumPage(a))),
-            );
-          },
-        );
+        final r = snap.data!;
+        // Saved copies replace search rows, so likes and downloads show.
+        final hits = [
+          for (final h in r.hits)
+            if (_show == _Show.all ||
+                (_show == _Show.full && (h.availability == Availability.offline || h.availability == Availability.full)) ||
+                (_show == _Show.device && h.availability == Availability.offline))
+              h,
+        ];
+        final tracks = [for (final h in hits) library.tracks[h.track.id] ?? h.track];
+        final albums = _show == _Show.device ? const <Album>[] : r.albums;
+
+        final rows = <Widget>[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Row(
+              children: [
+                for (final (show, label) in [(_Show.all, 'Все'), (_Show.full, 'Целиком'), (_Show.device, 'На устройстве')])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(label),
+                      selected: _show == show,
+                      onSelected: (_) => setState(() => _show = show),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          for (final p in r.problems)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.error_outline_rounded, size: 18, color: kAmber),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('$p', style: const TextStyle(color: kAmber, fontSize: 13))),
+                ],
+              ),
+            ),
+          if (tracks.isEmpty && albums.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Text(
+                r.isEmpty
+                    ? 'По запросу «${r.query}» ничего нет. Проверьте написание или оставьте только имя исполнителя.'
+                    : 'С таким фильтром ничего нет. Выберите «Все».',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: kMuted, fontSize: 15),
+              ),
+            ),
+          for (var i = 0; i < tracks.length; i++)
+            TrackTile(
+              tracks[i],
+              playButton: true,
+              tag: _tag(hits[i]).$1,
+              tagColor: _tag(hits[i]).$2,
+              onTap: () {
+                library.rememberSearch(r.query);
+                player.playAll(tracks, start: i);
+              },
+            ),
+          if (albums.isNotEmpty) ...[
+            const _Header('Свободные релизы'),
+            for (final a in albums)
+              ListTile(
+                leading: Cover(a.art, size: 50, radius: 6, seed: a.id),
+                title: Text(a.title,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(color: kSunken, borderRadius: BorderRadius.circular(4)),
+                      child: const Text('Archive',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: kAccent)),
+                    ),
+                    Expanded(child: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded, color: kMuted),
+                onTap: () {
+                  library.rememberSearch(r.query);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumPage(a)));
+                },
+              ),
+          ],
+        ];
+        return ListView(padding: const EdgeInsets.only(bottom: 24), children: rows);
       },
     );
   }
 }
 
 class _SearchField extends StatelessWidget {
-  const _SearchField({required this.controller, required this.hint, required this.onSearch});
+  const _SearchField(
+      {required this.controller, required this.hint, required this.onSearch, this.onChanged, this.focusNode});
   final TextEditingController controller;
   final String hint;
   final VoidCallback onSearch;
+  final ValueChanged<String>? onChanged;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -673,6 +753,8 @@ class _SearchField extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: SearchBar(
         controller: controller,
+        focusNode: focusNode,
+        onChanged: onChanged,
         hintText: hint,
         leading: const Icon(Icons.search),
         elevation: const WidgetStatePropertyAll(0),
@@ -689,7 +771,7 @@ class _SearchField extends StatelessWidget {
                     icon: const Icon(Icons.close),
                     onPressed: () {
                       controller.clear();
-                      onSearch();
+                      onChanged == null ? onSearch() : onChanged!('');
                     },
                   ),
           ),
