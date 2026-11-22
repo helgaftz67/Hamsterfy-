@@ -20,6 +20,18 @@ jobs:
       - run: flutter pub get
       - run: flutter test
       - run: flutter build windows --release
+      # The search index needs SQLite next to the program: a clean Windows
+      # has none. Fail the build if the library was not bundled.
+      - name: Check that SQLite is bundled
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem -Recurse build/windows/x64/runner/Release -Include *sqlite*
+          $found | ForEach-Object { "{0}  {1} bytes" -f $_.FullName, $_.Length }
+          if (-not $found) { Write-Error "No SQLite library in the release folder"; exit 1 }
+      # Opens the index inside the real app on Windows, so a library that is
+      # present but does not load is caught here too.
+      - name: Open the search index in the Windows app
+        run: flutter test integration_test/local_index_test.dart -d windows
       - uses: actions/upload-artifact@v4
         with:
           name: Hamsterfy-windows

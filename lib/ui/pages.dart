@@ -466,7 +466,10 @@ class _ShelfCard extends StatelessWidget {
 // ------------------------------------------------------------- Catalog ----
 
 class CatalogPage extends StatefulWidget {
-  const CatalogPage({super.key});
+  const CatalogPage({super.key, this.search});
+
+  /// Replaces the app-wide search; tests use it to control timing.
+  final Future<SearchResults> Function(String query)? search;
 
   @override
   State<CatalogPage> createState() => _CatalogPageState();
@@ -522,7 +525,9 @@ class _CatalogPageState extends State<CatalogPage> {
     setState(() {
       _searched = q;
       _suggestions = const [];
-      _results = searchService.search(q);
+      // Only the newest request is shown: the list below listens to this
+      // future alone, so an older, slower answer cannot replace it.
+      _results = (widget.search ?? searchService.search)(q);
     });
   }
 
