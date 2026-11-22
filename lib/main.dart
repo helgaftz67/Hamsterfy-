@@ -14,6 +14,7 @@ import 'profiles.dart';
 import 'radio.dart';
 import 'search/search_service.dart';
 import 'songs.dart';
+import 'ui/glass.dart';
 import 'ui/pages.dart';
 import 'ui/player_ui.dart';
 import 'ui/profile_ui.dart';
@@ -136,37 +137,51 @@ class _ShellState extends State<Shell> {
         }
       },
       child: Scaffold(
-        body: IndexedStack(
-          index: _tab,
+        body: Stack(
+          fit: StackFit.expand,
           children: [
-            for (var i = 0; i < pages.length; i++)
-              Navigator(
-                key: _keys[i],
-                onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => pages[i]),
-              ),
-          ],
-        ),
-        bottomNavigationBar: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const MiniPlayer(),
-            NavigationBar(
-              selectedIndex: _tab,
-              onDestinationSelected: (i) {
-                if (i == _tab) {
-                  _keys[i].currentState?.popUntil((r) => r.isFirst);
-                } else {
-                  setState(() => _tab = i);
-                }
-              },
-              destinations: const [
-                NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Главная'),
-                NavigationDestination(icon: Icon(Icons.search_rounded), label: 'Поиск'),
-                NavigationDestination(
-                    icon: Icon(Icons.library_music_outlined),
-                    selectedIcon: Icon(Icons.library_music),
-                    label: 'Медиатека'),
+            IndexedStack(
+              index: _tab,
+              children: [
+                for (var i = 0; i < pages.length; i++)
+                  Navigator(
+                    key: _keys[i],
+                    onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => pages[i]),
+                  ),
               ],
+            ),
+            // Light from the current artwork over every screen.
+            const AmbientGlow(),
+            // Floating glass: the mini player and the tab bar. Content
+            // scrolls underneath and shows through, blurred.
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 0,
+              child: SafeArea(
+                minimum: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const MiniPlayer(),
+                    GlassTabBar(
+                      index: _tab,
+                      onSelect: (i) {
+                        if (i == _tab) {
+                          _keys[i].currentState?.popUntil((r) => r.isFirst);
+                        } else {
+                          setState(() => _tab = i);
+                        }
+                      },
+                      items: const [
+                        (Icons.home_outlined, Icons.home_rounded, 'Главная'),
+                        (Icons.search_rounded, Icons.search_rounded, 'Поиск'),
+                        (Icons.library_music_outlined, Icons.library_music_rounded, 'Медиатека'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),

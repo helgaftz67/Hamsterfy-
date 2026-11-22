@@ -309,6 +309,22 @@ void main() {
       await lib.index!.close();
     });
 
+    test('genres come from tags, most common first; recently added is newest first', () {
+      final lib = Library();
+      void add(String id, String genre, int addedAt) =>
+          lib.tracks[id] = Track(id: id, title: id, artist: 'A', genre: genre, path: '/m/$id.mp3', addedAt: addedAt);
+      add('a', 'Rock', 1);
+      add('b', 'rock, Indie', 2);
+      add('c', 'Ambient', 3);
+      add('d', '', 4);
+      add('e', 'ROCK / ambient', 5);
+      lib.tracks['radio:x'] = Track(id: 'radio:x', title: 'r', artist: 'A', genre: 'Talk', url: 'http://r');
+      expect(lib.genres.take(3), ['Rock', 'Ambient', 'Indie']);
+      expect(lib.genres.contains('Talk'), isTrue);
+      expect(lib.recentlyAdded.map((t) => t.id).take(3), ['e', 'd', 'c']);
+      expect(lib.recentlyAdded.any((t) => t.isRadio), isFalse);
+    });
+
     test('snapshot round-trips favourites and plays', () {
       final lib = seeded();
       lib.favorites.add('t1');

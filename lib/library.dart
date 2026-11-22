@@ -614,6 +614,24 @@ class Library extends ChangeNotifier {
     return out;
   }
 
+  /// The newest full tracks in the collection.
+  List<Track> get recentlyAdded => songs.take(20).toList();
+
+  /// Genres found in the tags, most common first.
+  List<String> get genres {
+    final counts = <String, int>{};
+    for (final t in tracks.values) {
+      for (final g in t.genre.split(RegExp(r'[,;/]'))) {
+        final name = g.trim();
+        if (name.isEmpty || name.length > 24) continue;
+        final key = name.toLowerCase();
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+    final names = counts.keys.toList()..sort((a, b) => counts[b]!.compareTo(counts[a]!));
+    return [for (final n in names.take(12)) n[0].toUpperCase() + n.substring(1)];
+  }
+
   /// Tracks played most often.
   List<Track> get mostPlayed {
     final list = tracks.values.where((t) => !t.isPreview && (plays[t.id] ?? 0) > 0).toList()

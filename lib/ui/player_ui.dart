@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 
 import '../main.dart';
 import '../models.dart';
+import 'glass.dart';
 import 'theme.dart';
 
 String _seed(Track t) => t.album + t.artist;
@@ -22,81 +23,105 @@ class MiniPlayer extends StatelessWidget {
         final t = player.current;
         if (t == null) return const SizedBox.shrink();
         return Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+          padding: const EdgeInsets.only(bottom: 8),
           child: ArtColorBuilder(
             art: t.art,
             seed: _seed(t),
-            builder: (context, color) => Material(
-              color: Color.lerp(color, kBg, .35),
-              borderRadius: BorderRadius.circular(14),
-              clipBehavior: Clip.antiAlias,
-              elevation: 6,
-              shadowColor: Colors.black,
-              child: InkWell(
+            builder: (context, color) => Dismissible(
+              // Swipe the capsule sideways to change the track.
+              key: ValueKey('mini-${t.id}'),
+              confirmDismiss: (direction) async {
+                HapticFeedback.selectionClick();
+                direction == DismissDirection.endToStart ? player.next() : player.previous();
+                return false;
+              },
+              child: Pressable(
+                label: 'Открыть плеер: ${t.title}',
                 onTap: () => Navigator.of(context, rootNavigator: true).push(_playerRoute()),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 2, 8),
-                      child: Row(
-                        children: [
-                          Cover(t.art, size: 42, radius: 8, seed: _seed(t)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(t.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
-                                Text(t.artist,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(color: Colors.white.withValues(alpha: .7), fontSize: 12.5)),
-                              ],
+                child: Glass(
+                  radius: 31,
+                  tint: Color.lerp(color, const Color(0xFF2A2540), .45),
+                  child: Stack(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
+                        child: Row(
+                          children: [
+                            Cover(t.art, size: 46, radius: 23, seed: _seed(t)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(t.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                                  Text(t.artist,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(color: Colors.white.withValues(alpha: .72), fontSize: 12.5)),
+                                ],
+                              ),
                             ),
-                          ),
-                          ListenableBuilder(
-                            listenable: library,
-                            builder: (_, _) {
-                              final fav = library.isFavorite(t);
-                              return IconButton(
-                                tooltip: fav ? 'Убрать из избранного' : 'В избранное',
-                                onPressed: () {
-                                  HapticFeedback.lightImpact();
-                                  library.toggleFavorite(t);
-                                },
-                                icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                    color: fav ? kAccent : Colors.white),
+                            ListenableBuilder(
+                              listenable: library,
+                              builder: (_, _) {
+                                final fav = library.isFavorite(t);
+                                return IconButton(
+                                  tooltip: fav ? 'Убрать из избранного' : 'В избранное',
+                                  onPressed: () {
+                                    HapticFeedback.lightImpact();
+                                    library.toggleFavorite(t);
+                                  },
+                                  icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                      color: fav ? kAccent : Colors.white),
+                                );
+                              },
+                            ),
+                            IconButton(
+                              tooltip: player.playing ? 'Пауза' : 'Играть',
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                player.toggle();
+                              },
+                              icon: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                child: Icon(player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                    size: 26, color: Colors.black),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Progress as a thin line of light along the bottom edge.
+                      if (!t.isRadio)
+                        Positioned(
+                          left: 30,
+                          right: 30,
+                          bottom: 0,
+                          child: StreamBuilder<Duration>(
+                            stream: player.audio.positionStream,
+                            builder: (_, snap) {
+                              final total = player.audio.duration?.inMilliseconds ?? 0;
+                              final pos = snap.data?.inMilliseconds ?? 0;
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(2),
+                                child: LinearProgressIndicator(
+                                  value: total == 0 ? 0 : (pos / total).clamp(0, 1).toDouble(),
+                                  minHeight: 2.5,
+                                  color: Colors.white,
+                                  backgroundColor: Colors.white.withValues(alpha: .14),
+                                ),
                               );
                             },
                           ),
-                          IconButton(
-                            tooltip: player.playing ? 'Пауза' : 'Играть',
-                            onPressed: player.toggle,
-                            icon: Icon(player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                size: 32, color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (!t.isRadio)
-                      StreamBuilder<Duration>(
-                        stream: player.audio.positionStream,
-                        builder: (_, snap) {
-                          final total = player.audio.duration?.inMilliseconds ?? 0;
-                          final pos = snap.data?.inMilliseconds ?? 0;
-                          return LinearProgressIndicator(
-                            value: total == 0 ? 0 : (pos / total).clamp(0, 1).toDouble(),
-                            minHeight: 2,
-                            color: Colors.white,
-                            backgroundColor: Colors.white.withValues(alpha: .15),
-                          );
-                        },
-                      ),
-                  ],
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -205,6 +230,11 @@ class PlayerPage extends StatelessWidget {
                                 ),
                               ),
                               IconButton(
+                                  tooltip: 'Таймер сна',
+                                  onPressed: () => _showSleepTimer(context),
+                                  icon: Icon(Icons.bedtime_outlined,
+                                      color: player.sleepAt == null ? Colors.white : kAmber)),
+                              IconButton(
                                   tooltip: 'Очередь',
                                   onPressed: () => _showQueue(context),
                                   icon: const Icon(Icons.queue_music_rounded, color: Colors.white)),
@@ -214,11 +244,29 @@ class PlayerPage extends StatelessWidget {
                             child: Center(
                               child: LayoutBuilder(builder: (_, c) {
                                 final side = c.biggest.shortestSide.clamp(120.0, 380.0);
-                                return AnimatedScale(
-                                  scale: player.playing ? 1 : .86,
-                                  duration: const Duration(milliseconds: 420),
-                                  curve: Curves.easeOutBack,
-                                  child: Cover(t.art, size: side, radius: 18, seed: _seed(t), shadow: true),
+                                return GestureDetector(
+                                  // Flick the cover sideways to change the track.
+                                  onHorizontalDragEnd: (d) {
+                                    final v = d.primaryVelocity ?? 0;
+                                    if (v.abs() < 300) return;
+                                    HapticFeedback.selectionClick();
+                                    v < 0 ? player.next() : player.previous();
+                                  },
+                                  child: AnimatedScale(
+                                    scale: player.playing ? 1 : .86,
+                                    duration: const Duration(milliseconds: 420),
+                                    curve: Curves.easeOutBack,
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 320),
+                                      switchInCurve: Curves.easeOutCubic,
+                                      transitionBuilder: (child, a) => FadeTransition(
+                                        opacity: a,
+                                        child: ScaleTransition(scale: Tween(begin: .92, end: 1.0).animate(a), child: child),
+                                      ),
+                                      child: Cover(t.art,
+                                          key: ValueKey(t.id), size: side, radius: 22, seed: _seed(t), shadow: true),
+                                    ),
+                                  ),
                                 );
                               }),
                             ),
@@ -253,8 +301,17 @@ class PlayerPage extends StatelessWidget {
                               _LikeButton(fav: fav, onTap: () => library.toggleFavorite(t)),
                             ],
                           ),
-                          const SizedBox(height: 14),
-                          if (t.isRadio) const _LiveBadge() else const _Seek(),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _Pill(_sourceLabel(t)),
+                              if (player.sleepAt != null) ...[
+                                const SizedBox(width: 6),
+                                _Pill('сон через ${_minutesLeft(player.sleepAt!)} мин', icon: Icons.bedtime_rounded),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 12),
                           if (t.isAudius && t.link != null)
                             Align(
                               alignment: Alignment.centerLeft,
@@ -282,38 +339,50 @@ class PlayerPage extends StatelessWidget {
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Text(player.error!, style: const TextStyle(color: kAmber, fontSize: 13)),
                             ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              IconButton(
-                                tooltip: 'Перемешать',
-                                onPressed: player.toggleShuffle,
-                                icon: Icon(Icons.shuffle_rounded,
-                                    color:
-                                        player.audio.shuffleModeEnabled ? kAccent : Colors.white.withValues(alpha: .7)),
-                              ),
-                              IconButton(
-                                  tooltip: 'Предыдущий',
-                                  onPressed: player.previous,
-                                  icon: const Icon(Icons.skip_previous_rounded, size: 46, color: Colors.white)),
-                              _PlayButton(playing: player.playing, loading: player.loading, onTap: player.toggle),
-                              IconButton(
-                                  tooltip: 'Следующий',
-                                  onPressed: player.next,
-                                  icon: const Icon(Icons.skip_next_rounded, size: 46, color: Colors.white)),
-                              IconButton(
-                                tooltip: 'Повтор',
-                                onPressed: player.cycleLoop,
-                                icon: Icon(
-                                  player.audio.loopMode == LoopMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-                                  color: player.audio.loopMode == LoopMode.off
-                                      ? Colors.white.withValues(alpha: .7)
-                                      : kAccent,
+                          Glass(
+                            radius: 34,
+                            tint: Color.lerp(color, Colors.black, .35),
+                            strength: .8,
+                            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (t.isRadio) const _LiveBadge() else const _Seek(),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Перемешать',
+                                      onPressed: player.toggleShuffle,
+                                      icon: Icon(Icons.shuffle_rounded,
+                                          color:
+                                              player.audio.shuffleModeEnabled ? kAccent : Colors.white.withValues(alpha: .7)),
+                                    ),
+                                    IconButton(
+                                        tooltip: 'Предыдущий',
+                                        onPressed: player.previous,
+                                        icon: const Icon(Icons.skip_previous_rounded, size: 46, color: Colors.white)),
+                                    _PlayButton(playing: player.playing, loading: player.loading, onTap: player.toggle),
+                                    IconButton(
+                                        tooltip: 'Следующий',
+                                        onPressed: player.next,
+                                        icon: const Icon(Icons.skip_next_rounded, size: 46, color: Colors.white)),
+                                    IconButton(
+                                      tooltip: 'Повтор',
+                                      onPressed: player.cycleLoop,
+                                      icon: Icon(
+                                        player.audio.loopMode == LoopMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+                                        color: player.audio.loopMode == LoopMode.off
+                                            ? Colors.white.withValues(alpha: .7)
+                                            : kAccent,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 30),
+                          const SizedBox(height: 22),
                         ],
                       ),
                     ),
@@ -364,6 +433,106 @@ class PlayerPage extends StatelessWidget {
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+int _minutesLeft(DateTime at) {
+  final left = at.difference(DateTime.now());
+  return left.isNegative ? 0 : (left.inSeconds / 60).ceil();
+}
+
+/// Where the sound comes from and in what form, like a quality badge.
+String _sourceLabel(Track t) {
+  if (t.isRadio) return 'Радио';
+  if (t.isPreview) return 'Фрагмент';
+  if (t.isLocal) {
+    final dot = t.path!.lastIndexOf('.');
+    final ext = dot < 0 ? '' : t.path!.substring(dot + 1).toUpperCase();
+    final known = const {'MP3', 'FLAC', 'M4A', 'AAC', 'OGG', 'OPUS', 'WAV'}.contains(ext);
+    return known ? '$ext · на устройстве' : 'На устройстве';
+  }
+  if (t.isServer) return 'Мой сервер';
+  if (t.isAudius) return 'Audius · поток';
+  return 'Поток';
+}
+
+void _showSleepTimer(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (sheet) => Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: SafeArea(
+        child: Glass(
+          radius: 30,
+          padding: const EdgeInsets.fromLTRB(8, 18, 8, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(14, 0, 14, 2),
+                child: Text('Таймер сна', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                child: Text(
+                  player.sleepAt == null
+                      ? 'Музыка сама встанет на паузу через выбранное время.'
+                      : 'Пауза через ${_minutesLeft(player.sleepAt!)} мин.',
+                  style: const TextStyle(color: kMuted),
+                ),
+              ),
+              for (final minutes in const [15, 30, 45, 60])
+                ListTile(
+                  leading: const Icon(Icons.bedtime_outlined),
+                  title: Text('$minutes минут'),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    player.setSleepTimer(Duration(minutes: minutes));
+                    Navigator.pop(sheet);
+                  },
+                ),
+              if (player.sleepAt != null)
+                ListTile(
+                  leading: const Icon(Icons.timer_off_outlined, color: kAmber),
+                  title: const Text('Выключить таймер'),
+                  onTap: () {
+                    player.setSleepTimer(null);
+                    Navigator.pop(sheet);
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill(this.text, {this.icon});
+  final String text;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .14),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: .18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[Icon(icon, size: 13, color: kAmber), const SizedBox(width: 5)],
+          Text(text,
+              style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: .2)),
+        ],
       ),
     );
   }

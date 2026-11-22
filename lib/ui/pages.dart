@@ -7,6 +7,7 @@ import '../search/search_service.dart';
 import '../main.dart';
 import '../models.dart';
 import 'aurora.dart';
+import 'glass.dart';
 import 'profile_ui.dart';
 import 'theme.dart';
 
@@ -79,7 +80,7 @@ class _HomePageState extends State<HomePage> {
                 await _forYou;
               },
               child: ListView(
-                padding: const EdgeInsets.only(bottom: 24),
+                padding: EdgeInsets.only(bottom: 24 + dockSpace),
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 18, 12, 14),
@@ -155,6 +156,11 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                   ),
+                  if (library.recentlyAdded.length >= 3) ...[
+                    _Header('Недавно добавленное',
+                        onMore: () => _open('Недавно добавленное', library.recentlyAdded)),
+                    _TrackShelf(library.recentlyAdded),
+                  ],
                   if (top.isNotEmpty) ...[
                     _Header('Часто слушаете', onMore: () => _open('Часто слушаете', top)),
                     _TrackShelf(top),
@@ -325,28 +331,47 @@ class _Quick extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Material(
-        color: kSurface,
-        borderRadius: BorderRadius.circular(10),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
+      child: Opacity(
+        opacity: onTap == null ? .45 : 1,
+        child: Pressable(
+          label: label,
           onTap: onTap,
-          child: Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                color: tint.withValues(alpha: .20),
-                child: Icon(icon, color: tint, size: 26),
+          child: Container(
+            height: 60,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color.lerp(kSurface, tint, .16)!, kSurface],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-              ),
-            ],
+              border: Border.all(color: Colors.white.withValues(alpha: .07)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 10),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [tint.withValues(alpha: .55), tint.withValues(alpha: .22)],
+                    ),
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -575,7 +600,7 @@ class _CatalogPageState extends State<CatalogPage> {
 
   Widget _suggestionList() {
     return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: EdgeInsets.only(bottom: 24 + dockSpace),
       children: [
         for (final s in _suggestions)
           ListTile(
@@ -597,24 +622,62 @@ class _CatalogPageState extends State<CatalogPage> {
 
   Widget _history() {
     final recent = library.searches;
-    if (recent.isEmpty) {
+    final genres = library.genres;
+    if (recent.isEmpty && genres.isEmpty) {
       return const _Message(
           'Один поиск сразу по вашей музыке, Audius, каталогу песен и свободным релизам. Сначала показывается то, что играет целиком.');
     }
     return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: EdgeInsets.only(bottom: 24 + dockSpace),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 8, 0),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text('Недавние запросы', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-              ),
-              TextButton(onPressed: library.clearSearches, child: const Text('Очистить')),
-            ],
+        if (genres.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 6, 20, 10),
+            child: Text('Жанры в вашей музыке', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final g in genres)
+                  Pressable(
+                    label: 'Искать жанр $g',
+                    onTap: () => _use(g),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            HSLColor.fromColor(seedColor(g)).withLightness(.46).toColor(),
+                            HSLColor.fromColor(seedColor(g)).withLightness(.26).toColor(),
+                          ],
+                        ),
+                      ),
+                      child: Text(g, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Colors.white)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        if (recent.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 8, 0),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('Недавние запросы', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                ),
+                TextButton(onPressed: library.clearSearches, child: const Text('Очистить')),
+              ],
+            ),
+          ),
         for (final s in recent)
           ListTile(
             leading: const Icon(Icons.history_rounded, color: kMuted),
@@ -737,7 +800,7 @@ class _CatalogPageState extends State<CatalogPage> {
               ),
           ],
         ];
-        return ListView(padding: const EdgeInsets.only(bottom: 24), children: rows);
+        return ListView(padding: EdgeInsets.only(bottom: 24 + dockSpace), children: rows);
       },
     );
   }
@@ -840,7 +903,7 @@ class _RadioPageState extends State<RadioPage> {
                         'Станций с таким названием или жанром нет. Попробуйте другое слово, например «rock» или «ретро».');
                   }
                   return ListView(
-                    padding: const EdgeInsets.only(bottom: 24),
+                    padding: EdgeInsets.only(bottom: 24 + dockSpace),
                     children: [
                       if (mine.isNotEmpty) ...[
                         const _Header('Мои станции'),
@@ -927,6 +990,7 @@ class _AlbumPageState extends State<AlbumPage> {
           final tracks = [for (final t in snap.data!) library.tracks[t.id] ?? t];
           if (tracks.isEmpty) return const _Message('В этом релизе нет треков в формате MP3.');
           return ListView.builder(
+            padding: EdgeInsets.only(bottom: 24 + dockSpace),
             itemCount: tracks.length + 1,
             itemBuilder: (context, i) {
               if (i == 0) {
@@ -1181,7 +1245,7 @@ class _LibraryPageState extends State<LibraryPage> {
                             ? const _Message('В медиатеке такого нет. Проверьте написание или поищите в Каталоге.')
                             : _empty())
                         : ListView.builder(
-                            padding: const EdgeInsets.only(bottom: 24),
+                            padding: EdgeInsets.only(bottom: 24 + dockSpace),
                             itemCount: tracks.length,
                             itemBuilder: (context, i) => TrackTile(
                               tracks[i],
@@ -1227,6 +1291,7 @@ class _LibraryPageState extends State<LibraryPage> {
   Widget _playlists() {
     final names = library.playlistNames;
     return ListView(
+      padding: EdgeInsets.only(bottom: 24 + dockSpace),
       children: [
         ListTile(
           leading: const CircleAvatar(backgroundColor: kSunken, child: Icon(Icons.add, color: kAccent)),
@@ -1307,6 +1372,7 @@ class TrackListPage extends StatelessWidget {
                 : 'В плейлисте пока нет треков. Откройте меню любого трека и выберите «Добавить в плейлист».');
           }
           return ListView.builder(
+            padding: EdgeInsets.only(bottom: 24 + dockSpace),
             itemCount: list.length + 1,
             itemBuilder: (context, i) {
               if (i == 0) {

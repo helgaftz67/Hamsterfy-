@@ -72,8 +72,30 @@ class Player extends ChangeNotifier {
     }
   }
 
+  Timer? _sleepTimer;
+
+  /// When the sleep timer will pause playback, or null when it is off.
+  DateTime? sleepAt;
+
+  /// Pauses playback after [after]; null turns the timer off.
+  void setSleepTimer(Duration? after) {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    sleepAt = null;
+    if (after != null) {
+      sleepAt = DateTime.now().add(after);
+      _sleepTimer = Timer(after, () {
+        audio.pause();
+        sleepAt = null;
+        notifyListeners();
+      });
+    }
+    notifyListeners();
+  }
+
   /// Stops playback and empties the queue, e.g. when the profile changes.
   Future<void> reset() async {
+    setSleepTimer(null);
     await audio.stop();
     queue = [];
     current = null;
@@ -98,6 +120,7 @@ class Player extends ChangeNotifier {
 
   @override
   void dispose() {
+    _sleepTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
