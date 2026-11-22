@@ -51,7 +51,7 @@ const _vivid = ColorFilter.matrix(<double>[
 /// A sheet of liquid glass: whatever is behind it shows through, blurred
 /// and richer in colour; the edge bends light like a lens, and soft
 /// highlights drift slowly inside as if the glass were fluid.
-class Glass extends StatelessWidget {
+class Glass extends StatefulWidget {
   const Glass({
     super.key,
     required this.child,
@@ -74,7 +74,18 @@ class Glass extends StatelessWidget {
   final EdgeInsets padding;
 
   @override
+  State<Glass> createState() => _GlassState();
+}
+
+class _GlassState extends State<Glass> {
+  /// Chosen once per sheet, so rebuilding the content never makes the
+  /// light jump.
+  late final double _phase = identityHashCode(this) % 97 / 97;
+
+  @override
   Widget build(BuildContext context) {
+    final radius = widget.radius, blur = widget.blur, tint = widget.tint;
+    final strength = widget.strength, padding = widget.padding, child = widget.child;
     final r = BorderRadius.circular(radius);
     final base = tint ?? const Color(0xFF2B2429);
     return DecoratedBox(
@@ -93,7 +104,7 @@ class Glass extends StatelessWidget {
             inner: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
           ),
           child: CustomPaint(
-            foregroundPainter: _LiquidPainter(radius, identityHashCode(this) % 97 / 97),
+            foregroundPainter: _LiquidPainter(radius, _phase),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -142,6 +153,17 @@ class _LiquidPainter extends CustomPainter {
             ..color = Colors.white.withValues(alpha: alpha)
             ..maskFilter = MaskFilter.blur(BlurStyle.normal, m * .22),
         );
+    // Iridescence: warm and cool light gliding slowly past each other.
+    void sheen(double x, Color color) => canvas.drawOval(
+          Rect.fromCenter(center: Offset(size.width * x, size.height * .5), width: size.width * .7, height: size.height * 1.6),
+          Paint()
+            ..color = color
+            ..blendMode = BlendMode.plus
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, math.max(m * .5, 24)),
+        );
+    sheen(.5 + .45 * math.sin(t * .55), const Color(0x16FFB48C));
+    sheen(.5 + .45 * math.sin(t * .4 + 2.4), const Color(0x147C8CFF));
+    sheen(.5 + .45 * math.sin(t * .3 + 4.4), const Color(0x10E8739F));
     pool(size.width * (.30 + .22 * math.sin(t)), size.height * .02, size.width * .62, m * .50, .11);
     pool(size.width * (.72 + .18 * math.sin(t * .8 + 2)), size.height * 1.0, size.width * .55, m * .42, .06);
     // Lens edge: light inside the top lip, shade inside the bottom lip.
