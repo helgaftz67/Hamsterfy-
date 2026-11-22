@@ -37,6 +37,22 @@ jobs:
           name: Hamsterfy-windows
           path: build/windows/x64/runner/Release
           if-no-files-found: error
+      # The server's control panel is the same project with another entry
+      # point. It opens as a wide desktop window rather than a phone-sized one.
+      - name: Build the server control panel
+        shell: pwsh
+        run: |
+          $runner = 'windows/runner/main.cpp'
+          $code = Get-Content $runner -Raw
+          if ($code -notmatch 'Size size\(480, 900\)') { Write-Error 'Window size line not found'; exit 1 }
+          $code.Replace('Size size(480, 900)', 'Size size(1180, 780)').Replace('L"Hamsterfy"', 'L"Hamsterfy Server"') | Set-Content $runner
+          flutter build windows --release -t lib/server_panel/main.dart
+          git checkout -- $runner
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hamsterfy-Server-Panel-windows
+          path: build/windows/x64/runner/Release
+          if-no-files-found: error
       - run: dart build cli --target bin/server.dart -o server-build
       - uses: actions/upload-artifact@v4
         with:
