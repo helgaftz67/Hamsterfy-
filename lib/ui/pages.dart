@@ -745,6 +745,29 @@ class _CatalogPageState extends State<CatalogPage> {
               ],
             ),
           ),
+          if (!library.hasServer)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+              child: Glass(
+                radius: 22,
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.dns_outlined, color: kCream),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text('Сейчас ищу только на устройстве. Поиск по интернету идёт через ваш сервер.',
+                          style: TextStyle(fontSize: 13.5, height: 1.3)),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServerPage()))
+                          .then((_) => setState(() {})),
+                      child: const Text('Подключить'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           for (final p in r.problems)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),

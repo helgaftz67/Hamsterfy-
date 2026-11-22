@@ -31,20 +31,28 @@ final radio = RadioDirectory();
 final audius = Audius();
 final lyrics = LyricsService();
 
-/// One search over the device, the user's server, Audius and Internet
-/// Archive releases. Only tracks that play in full: no 30-second previews.
-SearchService get searchService => SearchService(
-      sources: [
-        TrackSource(SearchSource.local,
-            (q) async => (await library.searchLocal(q)).where((t) => !t.isRadio && !t.isPreview && !t.isUnavailable).toList(),
-            timeout: const Duration(seconds: 3)),
-        // The server is asked only for its own folder: the app queries the
-        // public catalogs itself, so nothing is fetched twice.
-        if (myServer != null) TrackSource(SearchSource.server, (q) async => (await myServer!.search(q, sources: 'library')).tracks),
-        TrackSource(SearchSource.audius, audius.search),
-      ],
-      albumSearch: catalog.search,
-    );
+/// One search over the device and the user's own server. Everything from
+/// the internet comes through the server, which finds full tracks and
+/// keeps what it may in its cache; without a server only the device is
+/// searched.
+SearchService get searchService {
+  final server = myServer;
+  // Tracks and releases arrive in one answer: ask the server once per query.
+  final asked = <String, Future<ServerSearch>>{};
+  Future<ServerSearch> ask(String q) => asked.putIfAbsent(q, () => server!.search(q));
+  return SearchService(
+    sources: [
+      TrackSource(SearchSource.local,
+          (q) async => (await library.searchLocal(q)).where((t) => !t.isRadio && !t.isPreview && !t.isUnavailable).toList(),
+          timeout: const Duration(seconds: 3)),
+      if (server != null)
+        TrackSource(SearchSource.server, (q) async => (await ask(q)).tracks.where((t) => !t.isPreview).toList(),
+            timeout: const Duration(seconds: 20)),
+    ],
+    albumSearch: server == null ? null : (q) async => (await ask(q)).albums,
+    albumTimeout: const Duration(seconds: 20),
+  );
+}
 
 /// Client for the user's own server, or null when none is set up.
 MyServer? get myServer => library.hasServer ? MyServer(library.serverUrl, token: library.serverToken) : null;

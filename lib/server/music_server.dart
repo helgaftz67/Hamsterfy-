@@ -10,7 +10,6 @@ import '../audius.dart';
 import '../catalog.dart';
 import '../models.dart';
 import '../search/search_service.dart';
-import '../songs.dart';
 
 /// A problem the server reports to the client as JSON:
 /// `{"error": {"code": "...", "message": "..."}}` with a matching status.
@@ -63,7 +62,7 @@ class _Song {
 ///   /            status page with the error journal
 ///   /health      is the server up, how many tracks it has
 ///   /library     every track in the music folder
-///   /search?q=   one search over the folder, Audius and song previews
+///   /search?q=   one search over the folder, Audius and Archive releases
 ///   /stream/ID   the audio file, with Range support for seeking
 ///   /cover/ID    embedded artwork
 ///   /rescan      re-read the music folder
@@ -564,13 +563,13 @@ class MusicServer {
     return song;
   }
 
-  /// One ranked search over the server's files, Audius, the song catalog
-  /// and Archive releases, with duplicates joined. A source that fails
+  /// One ranked search over the server's files, Audius and Archive
+  /// releases (full tracks only), with duplicates joined. A source that fails
   /// does not break the answer: its problem is listed under `errors`.
   Future<Map<String, dynamic>> search(String? query, [String? sources]) async {
     final q = (query ?? '').trim();
     if (q.isEmpty) throw ApiError(400, 'missing_query', 'Укажите запрос: /api/search?q=название или исполнитель.');
-    const known = ['library', 'audius', 'previews', 'archive'];
+    const known = ['library', 'audius', 'archive'];
     final wanted = sources == null || sources.trim().isEmpty ? known : sources.split(',').map((s) => s.trim()).toList();
     final unknown = wanted.where((s) => !known.contains(s)).toList();
     if (unknown.isNotEmpty) {
@@ -585,7 +584,6 @@ class MusicServer {
                       url: '/api/stream/${s.id}', art: s.hasCover ? '/api/cover/${s.id}' : null),
               ]),
         if (wanted.contains('audius')) TrackSource(SearchSource.audius, Audius(client: _client).search),
-        if (wanted.contains('previews')) TrackSource(SearchSource.previews, SongSearch(client: _client).search),
       ],
       albumSearch: wanted.contains('archive') ? Catalog(client: _client).search : null,
     );
@@ -593,7 +591,6 @@ class MusicServer {
     const names = {
       SearchSource.server: 'library',
       SearchSource.audius: 'audius',
-      SearchSource.previews: 'previews',
       SearchSource.archive: 'archive',
       SearchSource.local: 'library',
     };

@@ -105,9 +105,9 @@ void main() {
     // "Тихая волна" matches; "Закрытый" does not contain the word and is dropped.
     expect(rows.map((r) => r['id']), ['au:A1']);
     expect(rows.first['full'], isTrue);
-    // The preview catalog is down: the answer still arrives, with the reason.
-    expect((mixed['errors'] as List).map((e) => e['source']), contains('previews'));
-    expect(server.errors.any((e) => e.where == 'search/previews'), isTrue);
+    // 30-second previews are not searched at all.
+    expect((mixed['errors'] as List).map((e) => e['source']), isNot(contains('previews')));
+    expect((await get('/api/search?q=x&sources=previews')).$1, 400);
     final (_, journal, _) = await get('/errors');
     expect(journal['count'], greaterThan(0));
   });
@@ -250,7 +250,7 @@ void main() {
     // Sources that failed arrive as readable notes, not as a broken search.
     final mixed = await app.search('волна');
     expect(mixed.tracks.map((t) => t.id), contains('au:A1'));
-    expect(mixed.problems.any((p) => p.startsWith('Каталог песен: ')), isTrue);
+    expect(mixed.problems.any((p) => p.startsWith('Archive: ')), isTrue);
 
     final saved = await app.save(mixed.tracks.firstWhere((t) => t.id == 'au:A1'));
     expect(saved.isServer, isTrue);
@@ -297,8 +297,8 @@ void main() {
     expect(first['score'], 100); // exact title
     expect((await get(first['url'] as String)).$1, 200);
     expect(found['albums'], isEmpty);
-    // The fake preview catalog and Archive are down: both are named.
-    expect((found['errors'] as List).map((e) => e['source']).toSet(), {'previews', 'archive'});
+    // The fake Archive is down: it is named.
+    expect((found['errors'] as List).map((e) => e['source']).toSet(), {'archive'});
   });
 
   test('event journal records requests and errors, filtered by kind and position', () async {
