@@ -1,6 +1,6 @@
 // Hamsterfy personal music server.
 //
-//   dart run bin/server.dart --music "D:\Music" --port 8787 --token secret
+//   dart run bin/server.dart --music "D:\Music" --port 8765 --token secret
 //
 // Or build a standalone program: dart build cli --target bin/server.dart -o server-build
 import 'dart:io';
@@ -17,12 +17,12 @@ Future<void> main(List<String> args) async {
   if (args.contains('--help') || args.contains('-h')) {
     stdout.writeln('Hamsterfy Server\n'
         '  --music ПАПКА   папка с музыкой (по умолчанию ./music)\n'
-        '  --port НОМЕР    порт (по умолчанию 8787)\n'
+        '  --port НОМЕР    порт (по умолчанию 8765)\n'
         '  --token КЛЮЧ    ключ доступа; без него сервер открыт всем в сети\n'
         '  --cache-gb N    сколько гигабайт отдать под сохранённые треки (по умолчанию 20)');
     return;
   }
-  final port = int.tryParse(_arg(args, 'port') ?? '') ?? 8787;
+  final port = int.tryParse(_arg(args, 'port') ?? '') ?? MusicServer.defaultPort;
   final folder = Directory(_arg(args, 'music') ?? 'music').absolute;
   final token = _arg(args, 'token') ?? Platform.environment['HAMSTERFY_TOKEN'];
 

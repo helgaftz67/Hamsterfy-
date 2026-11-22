@@ -7,7 +7,9 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import '../audius.dart';
+import '../catalog.dart';
 import '../models.dart';
+import '../search/search_service.dart';
 import '../songs.dart';
 
 /// A problem the server reports to the client as JSON:
@@ -17,6 +19,24 @@ class ApiError implements Exception {
   final int status;
   final String code;
   final String message;
+}
+
+/// One line of the live journal the control panel shows.
+class ServerEvent {
+  ServerEvent(this.seq, this.kind, this.text, {this.status, this.ms}) : time = DateTime.now();
+
+  /// Position in the journal; clients ask for events after the last one seen.
+  final int seq;
+
+  /// "http" for a served request, "error" for a failure, "info" for the rest.
+  final String kind;
+  final String text;
+  final int? status;
+  final int? ms;
+  final DateTime time;
+
+  Map<String, dynamic> toJson() =>
+      {'seq': seq, 'time': time.toIso8601String(), 'kind': kind, 'text': text, 'status': status, 'ms': ms};
 }
 
 /// One line of the error journal shown on the status page and at /errors.
@@ -78,9 +98,31 @@ class MusicServer {
 
   final Map<String, _Song> _songs = {};
   final List<LoggedError> errors = [];
-  final DateTime started = DateTime.now();
+  DateTime started = DateTime.now();
   DateTime? lastScan;
   int requests = 0;
+
+  /// Requests answered with a server-side failure (5xx) since start.
+  int failedRequests = 0;
+
+  /// Live journal: served requests, failures and notable events.
+  final List<ServerEvent> events = [];
+  int _seq = 0;
+  final _eventStream = StreamController<ServerEvent>.broadcast();
+
+  /// Fires for every new journal line; the control panel listens to it.
+  Stream<ServerEvent> get onEvent => _eventStream.stream;
+
+  HttpServer? _http;
+  bool get running => _http != null;
+  int? get port => _http?.port;
+
+  void event(String kind, String text, {int? status, int? ms}) {
+    final e = ServerEvent(++_seq, kind, text, status: status, ms: ms);
+    events.add(e);
+    if (events.length > 1000) events.removeAt(0);
+    _eventStream.add(e);
+  }
 
   static const _types = {
     'mp3': 'audio/mpeg',
@@ -97,6 +139,7 @@ class MusicServer {
   void log(String where, Object message) {
     errors.add(LoggedError(where, message.toString()));
     if (errors.length > 200) errors.removeAt(0);
+    event('error', '$where: ${message.toString().split('\n').first}');
     stderr.writeln('[${DateTime.now().toIso8601String()}] $where: $message');
   }
 
@@ -160,25 +203,11 @@ class MusicServer {
         'artist': s.artist,
         'album': s.album,
         'durationMs': s.durationMs,
-        'url': '/stream/${s.id}',
-        'art': s.hasCover ? '/cover/${s.id}' : null,
+        'url': '/api/stream/${s.id}',
+        'art': s.hasCover ? '/api/cover/${s.id}' : null,
         'link': null,
         'full': true,
         'canSave': true,
-      };
-
-  static Map<String, dynamic> _external(Track t, String source) => {
-        'id': t.id,
-        'source': source,
-        'title': t.title,
-        'artist': t.artist,
-        'album': t.album,
-        'durationMs': t.durationMs,
-        'url': t.url,
-        'art': t.art,
-        'link': t.link,
-        'full': source != 'previews' && t.url != null,
-        'canSave': t.canSave && source != 'previews',
       };
 
   List<_Song> _match(String query) {
@@ -328,33 +357,130 @@ class MusicServer {
 
   // ---- HTTP ----------------------------------------------------------------
 
-  Future<HttpServer> start({int port = 8787, Object? address}) async {
+  static const defaultPort = 8765;
+  int _lastPort = defaultPort;
+  Object? _lastAddress;
+
+  Future<HttpServer> start({int port = defaultPort, Object? address}) async {
+    if (_http != null) return _http!;
     final server = await HttpServer.bind(address ?? InternetAddress.anyIPv4, port);
+    _http = server;
+    // Remember the port actually bound, so a restart returns to it even
+    // when the system picked one.
+    _lastPort = server.port;
+    _lastAddress = address;
+    started = DateTime.now();
     server.listen(handle);
+    event('info', 'Сервер запущен на порту ${server.port}');
     return server;
+  }
+
+  /// Stops answering. Requests in flight are cut off.
+  Future<void> stop() async {
+    final server = _http;
+    if (server == null) return;
+    _http = null;
+    await server.close(force: true);
+    event('info', 'Сервер остановлен');
+  }
+
+  Future<HttpServer> restart() async {
+    await stop();
+    return start(port: _lastPort, address: _lastAddress);
+  }
+
+  /// Addresses other devices on the network can use to reach the server.
+  Future<List<String>> addresses() async {
+    final p = port ?? _lastPort;
+    final out = <String>[];
+    try {
+      for (final iface in await NetworkInterface.list(type: InternetAddressType.IPv4)) {
+        for (final a in iface.addresses) {
+          if (!a.isLoopback) out.add('http://${a.address}:$p');
+        }
+      }
+    } catch (e) {
+      log('addresses', e);
+    }
+    return out;
+  }
+
+  Future<Map<String, dynamic>> status() async {
+    final cache = await savedInfo();
+    return {
+      'ok': true,
+      'running': running,
+      'port': port,
+      'uptimeSeconds': running ? DateTime.now().difference(started).inSeconds : 0,
+      'requests': requests,
+      'failedRequests': failedRequests,
+      'errors': errors.length,
+      'library': {'tracks': trackCount, 'folder': music.path, 'lastScan': lastScan?.toIso8601String()},
+      'cache': {'tracks': cache['count'], 'bytes': cache['bytes'], 'limitBytes': cacheLimitBytes},
+      'addresses': await addresses(),
+      // Kept for apps that read the old /health answer.
+      'tracks': trackCount,
+    };
   }
 
   Future<void> handle(HttpRequest req) async {
     requests++;
     final res = req.response;
+    final watch = Stopwatch()..start();
     try {
-      if (req.method != 'GET' && req.method != 'HEAD') {
-        throw ApiError(405, 'method_not_allowed', 'Сервер принимает только GET-запросы.');
-      }
+      await _route(req);
+    } on ApiError catch (e) {
+      // Wrong requests are answered but not journaled as errors; server
+      // faults are.
+      if (e.status >= 500) log(req.uri.path, e.message);
+      await _fail(res, e);
+    } catch (e, stack) {
+      log(req.uri.path, '$e\n$stack');
+      await _fail(res, ApiError(500, 'internal_error', 'Внутренняя ошибка сервера: $e'));
+    }
+    if (res.statusCode >= 500) failedRequests++;
+    final query = req.uri.queryParameters['q'];
+    event('http', '${req.method} ${req.uri.path}${query == null ? '' : '?q=$query'}',
+        status: res.statusCode, ms: watch.elapsedMilliseconds);
+  }
+
+  Future<void> _route(HttpRequest req) async {
+    final res = req.response;
+    {
       _authorize(req);
-      final seg = req.uri.pathSegments.where((s) => s.isNotEmpty).toList();
-      switch (seg.isEmpty ? '' : seg.first) {
+      var seg = req.uri.pathSegments.where((s) => s.isNotEmpty).toList();
+      // Everything lives under /api; the bare paths remain as synonyms.
+      if (seg.isNotEmpty && seg.first == 'api') seg = seg.sublist(1);
+      final action = seg.isEmpty ? '' : seg.first;
+      final sub = seg.length > 1 ? seg[1] : '';
+      // Actions that change something want POST; reading wants GET.
+      const actions = {'rescan', 'restart'};
+      final changes = actions.contains(action) || (action == 'cache' && sub == 'clear');
+      final get = req.method == 'GET' || req.method == 'HEAD';
+      if (changes ? req.method != 'POST' : !get) {
+        throw ApiError(405, 'method_not_allowed',
+            'Метод ${req.method} здесь не поддерживается: чтение — GET, действия rescan и cache/clear — POST.');
+      }
+      switch (action) {
         case '':
           await _html(res, _statusPage());
-        case 'health':
-          await _json(res, {
-            'ok': true,
-            'tracks': trackCount,
-            'musicFolder': music.path,
-            'lastScan': lastScan?.toIso8601String(),
-            'uptimeSeconds': DateTime.now().difference(started).inSeconds,
-            'errors': errors.length,
-          });
+        case 'status' || 'health':
+          await _json(res, await status());
+        case 'events':
+          final since = int.tryParse(req.uri.queryParameters['since'] ?? '') ?? 0;
+          final kind = req.uri.queryParameters['kind'];
+          if (kind != null && !const {'http', 'error', 'info'}.contains(kind)) {
+            throw ApiError(400, 'unknown_kind', 'Неизвестный тип событий «$kind». Доступны: http, error, info.');
+          }
+          final list = events.where((e) => e.seq > since && (kind == null || e.kind == kind)).toList();
+          await _json(res, {'last': _seq, 'count': list.length, 'events': list.map((e) => e.toJson()).toList()});
+        case 'cache':
+          if (sub == 'clear') {
+            final removed = await clearSaved();
+            await _json(res, {'ok': true, 'removed': removed});
+          } else {
+            await _json(res, await savedInfo());
+          }
         case 'library':
           final all = _songs.values.toList()..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
           await _json(res, {'count': all.length, 'tracks': all.map(_own).toList()});
@@ -369,20 +495,55 @@ class MusicServer {
         case 'errors':
           await _json(res, {'count': errors.length, 'errors': errors.reversed.map((e) => e.toJson()).toList()});
         case 'stream':
-          await _stream(req, _song(seg));
+          if (sub.startsWith('au:')) {
+            await _streamRemote(req, sub);
+          } else {
+            await _stream(req, _song(seg));
+          }
         case 'cover':
           await _cover(res, _song(seg));
         default:
           throw ApiError(404, 'not_found', 'Такого адреса нет: ${req.uri.path}. Список адресов — на главной странице.');
       }
-    } on ApiError catch (e) {
-      // Wrong requests are answered but not journaled; server faults are.
-      if (e.status >= 500) log(req.uri.path, e.message);
-      await _fail(res, e);
-    } catch (e, stack) {
-      log(req.uri.path, '$e\n$stack');
-      await _fail(res, ApiError(500, 'internal_error', 'Внутренняя ошибка сервера: $e'));
     }
+  }
+
+  /// Plays a track that lives at its source. A track the artist allows to
+  /// download is saved on first play and served from disk from then on;
+  /// any other full track is not stored: the player is sent to the source.
+  Future<void> _streamRemote(HttpRequest req, String id) async {
+    final name = 'audius_${id.substring(3)}.mp3';
+    var cached = _songs.values.where((s) => s.file.uri.pathSegments.last == name).firstOrNull;
+    if (cached == null) {
+      try {
+        await save(id);
+        cached = _songs.values.where((s) => s.file.uri.pathSegments.last == name).firstOrNull;
+        if (cached != null) event('info', 'Сохранён в кэш: ${cached.title} — ${cached.artist}');
+      } on ApiError catch (e) {
+        if (e.code != 'download_not_allowed') rethrow;
+        // Streaming is allowed, keeping a copy is not.
+        req.response.statusCode = HttpStatus.found;
+        req.response.headers.set(HttpHeaders.locationHeader, Audius.streamUrl(id.substring(3)));
+        await req.response.close();
+        return;
+      }
+    }
+    await _stream(req, cached!);
+  }
+
+  /// Removes everything the server saved itself; the owner's files stay.
+  Future<int> clearSaved() async {
+    var removed = 0;
+    for (final name in _index.keys.toList()) {
+      final f = File('${cacheDir.path}${Platform.pathSeparator}$name');
+      if (await f.exists()) await f.delete();
+      _index.remove(name);
+      removed++;
+    }
+    await _saveIndex();
+    await scan();
+    event('info', 'Кэш очищен: удалено треков — $removed');
+    return removed;
   }
 
   void _authorize(HttpRequest req) {
@@ -398,48 +559,82 @@ class MusicServer {
     if (seg.length < 2) throw ApiError(400, 'missing_id', 'Укажите идентификатор трека: /${seg.first}/ID.');
     final song = _songs[seg[1].replaceFirst('sv:', '')];
     if (song == null) {
-      throw ApiError(404, 'track_not_found', 'Трека с идентификатором ${seg[1]} нет. Возможно, файл удалён — откройте /rescan.');
+      throw ApiError(404, 'track_not_found', 'Трека с идентификатором ${seg[1]} нет. Возможно, файл удалён — перечитайте папку.');
     }
     return song;
   }
 
-  /// One search over every source. A source that fails does not break the
-  /// answer: its problem is listed under `errors` and journaled.
+  /// One ranked search over the server's files, Audius, the song catalog
+  /// and Archive releases, with duplicates joined. A source that fails
+  /// does not break the answer: its problem is listed under `errors`.
   Future<Map<String, dynamic>> search(String? query, [String? sources]) async {
     final q = (query ?? '').trim();
-    if (q.isEmpty) throw ApiError(400, 'missing_query', 'Укажите запрос: /search?q=название или исполнитель.');
-    const known = ['library', 'audius', 'previews'];
+    if (q.isEmpty) throw ApiError(400, 'missing_query', 'Укажите запрос: /api/search?q=название или исполнитель.');
+    const known = ['library', 'audius', 'previews', 'archive'];
     final wanted = sources == null || sources.trim().isEmpty ? known : sources.split(',').map((s) => s.trim()).toList();
     final unknown = wanted.where((s) => !known.contains(s)).toList();
     if (unknown.isNotEmpty) {
       throw ApiError(400, 'unknown_source', 'Неизвестный источник: ${unknown.join(', ')}. Доступны: ${known.join(', ')}.');
     }
-    final failures = <Map<String, String>>[];
-    Future<List<Map<String, dynamic>>> guarded(String source, Future<List<Track>> Function() run) async {
-      if (!wanted.contains(source)) return const [];
-      try {
-        return [for (final t in await run()) _external(t, source)];
-      } catch (e) {
-        log('search/$source', e);
-        failures.add({'source': source, 'message': 'Источник не ответил: $e'});
-        return const [];
-      }
+    final service = SearchService(
+      sources: [
+        if (wanted.contains('library'))
+          TrackSource(SearchSource.server, (q) async => [
+                for (final s in _match(q))
+                  Track(id: 'sv:${s.id}', title: s.title, artist: s.artist, album: s.album, durationMs: s.durationMs,
+                      url: '/api/stream/${s.id}', art: s.hasCover ? '/api/cover/${s.id}' : null),
+              ]),
+        if (wanted.contains('audius')) TrackSource(SearchSource.audius, Audius(client: _client).search),
+        if (wanted.contains('previews')) TrackSource(SearchSource.previews, SongSearch(client: _client).search),
+      ],
+      albumSearch: wanted.contains('archive') ? Catalog(client: _client).search : null,
+    );
+    final found = await service.search(q);
+    const names = {
+      SearchSource.server: 'library',
+      SearchSource.audius: 'audius',
+      SearchSource.previews: 'previews',
+      SearchSource.archive: 'archive',
+      SearchSource.local: 'library',
+    };
+    for (final p in found.problems) {
+      log('search/${names[p.source]}', p.message);
     }
-
-    final own = wanted.contains('library') ? _match(q).map(_own).toList() : const <Map<String, dynamic>>[];
-    final remote = await Future.wait([
-      guarded('audius', () => Audius(client: _client).search(q)),
-      guarded('previews', () => SongSearch(client: _client).search(q)),
-    ]);
-    // Whole tracks first, previews and unplayable rows last.
-    final results = [...own, ...remote[0].where((t) => t['full'] == true), ...remote[1], ...remote[0].where((t) => t['full'] != true)];
-    return {'query': q, 'count': results.length, 'results': results, 'errors': failures};
+    return {
+      'query': q,
+      'count': found.hits.length,
+      'results': [
+        for (final h in found.hits)
+          {
+            'id': h.track.id,
+            'source': names[h.source],
+            'title': h.track.title,
+            'artist': h.track.artist,
+            'album': h.track.album,
+            'durationMs': h.track.durationMs,
+            'url': h.track.url,
+            'art': h.track.art,
+            'link': h.track.link,
+            'full': h.availability == Availability.full || h.availability == Availability.offline,
+            'availability': h.availability.name,
+            'canSave': h.source == SearchSource.server || (h.track.canSave && h.source == SearchSource.audius),
+            'score': h.score,
+            'alsoIn': [for (final s in h.alsoIn) names[s]],
+          },
+      ],
+      'albums': [
+        for (final a in found.albums) {'id': a.id, 'title': a.title, 'artist': a.artist, 'art': a.art, 'source': 'archive'},
+      ],
+      'errors': [
+        for (final p in found.problems) {'source': names[p.source]!, 'message': 'Источник не ответил: ${p.message}'},
+      ],
+    };
   }
 
   Future<void> _stream(HttpRequest req, _Song song) async {
     final res = req.response;
     if (!await song.file.exists()) {
-      throw ApiError(410, 'file_gone', 'Файл трека «${song.title}» исчез с диска. Откройте /rescan.');
+      throw ApiError(410, 'file_gone', 'Файл трека «${song.title}» исчез с диска. Перечитайте папку.');
     }
     final length = await song.file.length();
     final ext = song.file.path.split('.').last.toLowerCase();
@@ -536,15 +731,15 @@ th{color:#a39fbc;font-weight:500;font-size:13px}td:last-child{word-break:break-w
 <p class="muted">Папка с музыкой: <code>${_esc(music.path)}</code>. Последнее чтение папки: ${lastScan == null ? 'ещё не было' : _esc(lastScan!.toLocal().toString().substring(0, 19))}.</p>
 <h2>Адреса</h2><div class="scroll"><table>
 <tr><th>Адрес</th><th>Что отдаёт</th></tr>
-<tr><td><code>/health$key</code></td><td>Работает ли сервер и сколько в нём треков</td></tr>
-<tr><td><code>/search?q=запрос</code></td><td>Поиск сразу по папке, Audius и фрагментам песен</td></tr>
-<tr><td><code>/library</code></td><td>Все треки из папки</td></tr>
-<tr><td><code>/stream/ID</code></td><td>Аудиофайл, с поддержкой перемотки</td></tr>
-<tr><td><code>/cover/ID</code></td><td>Обложка из файла</td></tr>
-<tr><td><code>/rescan</code></td><td>Перечитать папку после добавления файлов</td></tr>
-<tr><td><code>/save?id=au:ID</code></td><td>Сохранить трек Audius, если артист разрешил скачивание</td></tr>
-<tr><td><code>/saved</code></td><td>Что сохранено и сколько места занято</td></tr>
-<tr><td><code>/errors</code></td><td>Журнал ошибок в JSON</td></tr>
+<tr><td><code>GET /api/status$key</code></td><td>Состояние, порт, счётчики, размер кэша, адреса в сети</td></tr>
+<tr><td><code>GET /api/search?q=запрос</code></td><td>Один поиск по папке, кэшу, Audius, каталогу песен и релизам Archive</td></tr>
+<tr><td><code>GET /api/library</code></td><td>Всё, что лежит на сервере: папка и кэш</td></tr>
+<tr><td><code>GET /api/stream/ID</code></td><td>Аудио с перемоткой; разрешённые к скачиванию треки сохраняются в кэш</td></tr>
+<tr><td><code>GET /api/cover/ID</code></td><td>Обложка из файла</td></tr>
+<tr><td><code>POST /api/rescan</code></td><td>Перечитать папку после добавления файлов</td></tr>
+<tr><td><code>GET /api/cache</code></td><td>Что в кэше и сколько места занято</td></tr>
+<tr><td><code>POST /api/cache/clear</code></td><td>Очистить кэш; ваши файлы остаются</td></tr>
+<tr><td><code>GET /api/events</code></td><td>Журнал событий: запросы, ошибки, прочее</td></tr>
 </table></div>
 <h2>Журнал ошибок</h2>
 ${errors.isEmpty ? '<p class="ok">Ошибок нет.</p>' : '<div class="scroll"><table><tr><th>Время</th><th>Где</th><th>Что случилось</th></tr>${rows.join()}</table></div>'}

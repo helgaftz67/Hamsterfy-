@@ -89,7 +89,7 @@ void main() {
     expect(health['tracks'], 1);
     final (_, lib, _) = await get('/library');
     expect(lib['tracks'].single['title'], 'Ночной город');
-    expect(lib['tracks'].single['url'], startsWith('/stream/'));
+    expect(lib['tracks'].single['url'], startsWith('/api/stream/'));
     final (_, page, _) = await get('/');
     expect(page, contains('Hamsterfy Server'));
     expect(page, contains('Журнал ошибок'));
@@ -102,11 +102,11 @@ void main() {
     expect(body['results'].first['source'], 'library');
     final (_, mixed, _) = await get('/search?q=${Uri.encodeQueryComponent('волна')}');
     final rows = mixed['results'] as List;
-    expect(rows.map((r) => r['id']), ['au:A1', 'au:A2']);
+    // "Тихая волна" matches; "Закрытый" does not contain the word and is dropped.
+    expect(rows.map((r) => r['id']), ['au:A1']);
     expect(rows.first['full'], isTrue);
-    expect(rows.last['full'], isFalse);
     // The preview catalog is down: the answer still arrives, with the reason.
-    expect(mixed['errors'].single['source'], 'previews');
+    expect((mixed['errors'] as List).map((e) => e['source']), contains('previews'));
     expect(server.errors.any((e) => e.where == 'search/previews'), isTrue);
     final (_, journal, _) = await get('/errors');
     expect(journal['count'], greaterThan(0));
@@ -148,8 +148,8 @@ void main() {
     await expectError(url, 416, 'range_not_satisfiable', headers: {'Range': 'bytes=5000-6000'});
     await expectError(url, 416, 'bad_range', headers: {'Range': 'lines=1-2'});
     await expectError(url.replaceFirst('/stream/', '/cover/'), 404, 'no_cover');
-    final post = await client.postUrl(Uri.parse('$base/health'));
-    final res = await post.close();
+    final wrong = await client.postUrl(Uri.parse('$base/health'));
+    final res = await wrong.close();
     expect(res.statusCode, 405);
     await res.drain<void>();
   });
@@ -172,7 +172,9 @@ void main() {
     final (gone, body, _) = await get(url);
     expect(gone, 410);
     expect(body['error']['code'], 'file_gone');
-    final (_, rescan, _) = await get('/rescan');
+    final again = await client.postUrl(Uri.parse('$base/api/rescan'));
+    final rescanRes = await again.close();
+    final rescan = jsonDecode(utf8.decode(await rescanRes.fold<List<int>>([], (a, b) => a..addAll(b))));
     expect(rescan['tracks'], 0);
   });
 
@@ -236,7 +238,7 @@ void main() {
     final track = own.tracks.first;
     expect(track.isServer, isTrue);
     expect(track.canSave, isTrue);
-    expect(track.url, startsWith('http://127.0.0.1:${http_.port}/stream/'));
+    expect(track.url, startsWith('http://127.0.0.1:${http_.port}/api/stream/'));
     expect(track.url, contains('token=key'));
     // The address the player gets really returns the file, and seeks.
     final req = await client.getUrl(Uri.parse(track.url!));
@@ -248,7 +250,7 @@ void main() {
     // Sources that failed arrive as readable notes, not as a broken search.
     final mixed = await app.search('волна');
     expect(mixed.tracks.map((t) => t.id), contains('au:A1'));
-    expect(mixed.problems.single, startsWith('Каталог песен: '));
+    expect(mixed.problems.any((p) => p.startsWith('Каталог песен: ')), isTrue);
 
     final saved = await app.save(mixed.tracks.firstWhere((t) => t.id == 'au:A1'));
     expect(saved.isServer, isTrue);
@@ -267,5 +269,121 @@ void main() {
       MyServer('127.0.0.1:1').health(),
       throwsA(isA<ServerProblem>().having((e) => e.message, 'message', contains('Не удалось связаться'))),
     );
+  });
+
+  Future<(int, dynamic)> post(String path) async {
+    final req = await client.postUrl(Uri.parse('$base$path'));
+    final res = await req.close();
+    final bytes = await res.fold<List<int>>([], (a, b) => a..addAll(b));
+    return (res.statusCode, jsonDecode(utf8.decode(bytes)));
+  }
+
+  test('/api routes: status, ranked search with albums, old paths still work', () async {
+    await boot();
+    final (ok, status, _) = await get('/api/status');
+    expect(ok, 200);
+    expect(status['running'], isTrue);
+    expect(status['port'], http_.port);
+    expect(status['library']['tracks'], 1);
+    expect(status['cache'], {'tracks': 0, 'bytes': 0, 'limitBytes': 1 << 30});
+    expect(status['requests'], greaterThan(0));
+    expect((await get('/health')).$2['tracks'], 1); // synonym for older apps
+
+    final (_, found, _) = await get('/api/search?q=${Uri.encodeQueryComponent('ночной город')}');
+    final first = found['results'].first;
+    expect(first['source'], 'library');
+    expect(first['availability'], 'full');
+    expect(first['url'], startsWith('/api/stream/'));
+    expect(first['score'], 100); // exact title
+    expect((await get(first['url'] as String)).$1, 200);
+    expect(found['albums'], isEmpty);
+    // The fake preview catalog and Archive are down: both are named.
+    expect((found['errors'] as List).map((e) => e['source']).toSet(), {'previews', 'archive'});
+  });
+
+  test('event journal records requests and errors, filtered by kind and position', () async {
+    await boot();
+    final seen = <ServerEvent>[];
+    final sub = server.onEvent.listen(seen.add);
+    await get('/api/status');
+    await get('/api/stream/nope');
+    await get('/api/search?q=x');
+    final (_, all, _) = await get('/api/events');
+    final events = all['events'] as List;
+    expect(events.any((e) => e['kind'] == 'http' && e['text'] == 'GET /api/status' && e['status'] == 200), isTrue);
+    expect(events.any((e) => e['kind'] == 'http' && e['status'] == 404), isTrue);
+    expect(events.any((e) => e['kind'] == 'http' && e['text'] == 'GET /api/search?q=x'), isTrue);
+    expect(events.any((e) => e['kind'] == 'error' && (e['text'] as String).startsWith('search/')), isTrue);
+    final (_, errorsOnly, _) = await get('/api/events?kind=error');
+    expect((errorsOnly['events'] as List).every((e) => e['kind'] == 'error'), isTrue);
+    final last = all['last'] as int;
+    await get('/api/status');
+    final (_, fresh, _) = await get('/api/events?since=$last&kind=http');
+    expect((fresh['events'] as List).map((e) => e['text']), contains('GET /api/status'));
+    expect((fresh['events'] as List).every((e) => (e['seq'] as int) > last), isTrue);
+    final (bad, body, _) = await get('/api/events?kind=nonsense');
+    expect(bad, 400);
+    expect(body['error']['code'], 'unknown_kind');
+    // The control panel receives the same lines live.
+    expect(seen.any((e) => e.kind == 'http' && e.status == 404), isTrue);
+    await sub.cancel();
+  });
+
+  test('stream caches what may be downloaded and redirects what may not', () async {
+    await boot();
+    // First play of a download-permitted track: saved, then served.
+    final (first, bytes, _) = await get('/api/stream/au:D1');
+    expect(first, 200);
+    expect((bytes as List).length, 4000);
+    expect((await get('/api/cache')).$2['count'], 1);
+    // Second play comes from disk, with seeking.
+    final (again, part, headers) = await get('/api/stream/au:D1', headers: {'Range': 'bytes=10-19'});
+    expect(again, 206);
+    expect((part as List).length, 10);
+    expect(headers.value('content-range'), 'bytes 10-19/4000');
+    expect((await get('/api/library')).$2['count'], 2);
+
+    // Streaming allowed, downloading not: nothing is stored, the player is
+    // sent to the source.
+    final req = await client.getUrl(Uri.parse('$base/api/stream/au:locked'))..followRedirects = false;
+    final res = await req.close();
+    await res.drain<void>();
+    expect(res.statusCode, 302);
+    expect(res.headers.value('location'), 'https://api.audius.co/v1/tracks/locked/stream?app_name=Hamsterfy');
+    expect((await get('/api/cache')).$2['count'], 1);
+
+    final (gated, body, _) = await get('/api/stream/au:gated');
+    expect(gated, 403);
+    expect(body['error']['code'], 'not_streamable');
+  });
+
+  test('actions need POST; clearing the cache keeps the owner files', () async {
+    await boot();
+    await get('/api/stream/au:D1');
+    final (wrong, body, _) = await get('/api/cache/clear');
+    expect(wrong, 405);
+    expect(body['error']['code'], 'method_not_allowed');
+    final (ok, cleared) = await post('/api/cache/clear');
+    expect(ok, 200);
+    expect(cleared['removed'], 1);
+    final (_, lib, _) = await get('/api/library');
+    expect(lib['tracks'].single['title'], 'Ночной город');
+    expect((await post('/api/rescan')).$2['tracks'], 1);
+    expect((await post('/api/status')).$1, 405);
+  });
+
+  test('stop and restart', () async {
+    await boot();
+    final port = http_.port;
+    expect(server.running, isTrue);
+    await server.stop();
+    expect(server.running, isFalse);
+    expect(server.port, isNull);
+    await expectLater(get('/api/status'), throwsA(isA<SocketException>()));
+    http_ = await server.restart();
+    expect(http_.port, port);
+    expect((await get('/api/status')).$2['running'], isTrue);
+    expect(server.events.where((e) => e.kind == 'info').map((e) => e.text),
+        containsAll(['Сервер остановлен', 'Сервер запущен на порту $port']));
   });
 }
