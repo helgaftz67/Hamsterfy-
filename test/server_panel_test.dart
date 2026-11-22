@@ -32,6 +32,9 @@ void main() {
   });
 
   tearDown(() async {
+    // Close the server and the journal file first: Windows refuses to
+    // delete a folder that still has an open file in it.
+    await panel.shutdown();
     panel.dispose();
     await root.delete(recursive: true);
   });
@@ -120,5 +123,24 @@ void main() {
     expect(again.settings.token, 'key');
     expect(again.settings.cacheGb, 5);
     again.dispose();
+  });
+
+  test('shutdown stops the server and releases the journal file', () async {
+    await panel.start();
+    await get('/api/status');
+    final port = panel.port;
+    await panel.shutdown();
+    expect(panel.running, isFalse);
+    // The port is free again and the log can be read and removed.
+    final probe = await ServerSocket.bind(InternetAddress.loopbackIPv4, port!);
+    await probe.close();
+    final log = panel.logsDir.listSync().whereType<File>().single;
+    expect(await log.readAsString(), contains('Сервер остановлен'));
+    await log.delete();
+    expect(log.existsSync(), isFalse);
+    // Starting again after a shutdown works and opens a fresh journal.
+    panel.settings.port = 0;
+    await panel.start();
+    expect(panel.running, isTrue);
   });
 }

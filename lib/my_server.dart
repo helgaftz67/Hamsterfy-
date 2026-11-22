@@ -17,9 +17,12 @@ class ServerProblem implements Exception {
 
 /// Answer to a search: the tracks, plus sources that failed on the way.
 class ServerSearch {
-  ServerSearch(this.tracks, this.problems);
+  ServerSearch(this.tracks, this.problems, [this.albums = const []]);
   final List<Track> tracks;
   final List<String> problems;
+
+  /// Free releases the server found (Internet Archive).
+  final List<Album> albums;
 }
 
 /// Client for the personal Hamsterfy server (see bin/server.dart).
@@ -32,13 +35,24 @@ class MyServer {
   final String? token;
   final http.Client _client;
 
-  /// Accepts "192.168.1.5:8787", "http://host:8787/" and the like.
+  /// The port the server listens on unless told otherwise.
+  static const defaultPort = 8765;
+
+  /// Accepts "192.168.1.5", "192.168.1.5:8765", "http://host:8765/" and
+  /// the like. An address without a port gets the server's usual one.
   static String normalize(String address) {
     var a = address.trim();
     if (a.isEmpty) return a;
-    if (!a.startsWith('http://') && !a.startsWith('https://')) a = 'http://$a';
+    final hadScheme = a.startsWith('http://') || a.startsWith('https://');
+    if (!hadScheme) a = 'http://$a';
     while (a.endsWith('/')) {
       a = a.substring(0, a.length - 1);
+    }
+    final uri = Uri.tryParse(a);
+    // Only bare http hosts get the port: an https address behind a proxy
+    // or tunnel is expected to be complete as typed.
+    if (uri != null && uri.hasAuthority && !uri.hasPort && uri.scheme == 'http' && uri.path.isEmpty) {
+      a = '$a:$defaultPort';
     }
     return a;
   }
@@ -79,7 +93,7 @@ class MyServer {
 
   /// Number of tracks in the server's folder; throws when it is unreachable.
   Future<int> health() async {
-    final body = await _get('/health');
+    final body = await _get('/api/status');
     if (body['ok'] != true) throw ServerProblem('По этому адресу отвечает не сервер Hamsterfy.');
     return body['tracks'] as int? ?? 0;
   }
@@ -87,23 +101,28 @@ class MyServer {
   /// Searches through the server. [sources] narrows it, e.g. "library"
   /// for the server's own folder only.
   Future<ServerSearch> search(String query, {String? sources}) async {
-    final body = await _get('/search', {'q': query, 'sources': ?sources});
+    final body = await _get('/api/search', {'q': query, 'sources': ?sources});
     return ServerSearch(
       [for (final r in (body['results'] as List? ?? const [])) track(r as Map<String, dynamic>)],
       [
         for (final e in (body['errors'] as List? ?? const []))
           '${_sourceName(e['source'].toString())}: ${e['message']}',
       ],
+      [
+        for (final a in (body['albums'] as List? ?? const []))
+          Album(id: a['id'].toString(), title: (a['title'] ?? '').toString(), artist: (a['artist'] ?? '').toString()),
+      ],
     );
   }
 
   /// Asks the server to keep a track in its own folder.
-  Future<Track> save(Track t) async => track((await _get('/save', {'id': t.id}))['track'] as Map<String, dynamic>);
+  Future<Track> save(Track t) async => track((await _get('/api/save', {'id': t.id}))['track'] as Map<String, dynamic>);
 
   static String _sourceName(String source) => switch (source) {
         'audius' => 'Audius',
         'previews' => 'Каталог песен',
         'library' => 'Папка сервера',
+        'archive' => 'Archive',
         _ => source,
       };
 

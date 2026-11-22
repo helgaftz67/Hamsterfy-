@@ -246,6 +246,21 @@ class ServerController extends ChangeNotifier {
   /// Flushes the journal file; call before reading it or quitting.
   Future<void> flushLog() async => _logSink?.flush();
 
+  /// Stops the server and closes the journal file. Call before quitting
+  /// or before touching the data folder: an open file cannot be moved or
+  /// deleted on Windows.
+  Future<void> shutdown() async {
+    busy = false;
+    await stop();
+    final sink = _logSink;
+    _logSink = null;
+    _logDay = null;
+    if (sink != null) {
+      await sink.flush();
+      await sink.close();
+    }
+  }
+
   bool _disposed = false;
 
   /// Work that finishes after the panel is closed (a counter refresh, a

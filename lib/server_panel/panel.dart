@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -77,8 +78,23 @@ class _ServerPanelState extends State<ServerPanel> {
     if (mounted) _say('Кэш очищен. Удалено треков: $removed');
   }
 
+  late final _lifecycle = AppLifecycleListener(
+    // Closing the window: stop the server and release the journal file.
+    onExitRequested: () async {
+      await c.shutdown();
+      return AppExitResponse.exit;
+    },
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle; // start listening
+  }
+
   @override
   void dispose() {
+    _lifecycle.dispose();
     _scroll.dispose();
     super.dispose();
   }

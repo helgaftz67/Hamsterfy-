@@ -386,4 +386,26 @@ void main() {
     expect(server.events.where((e) => e.kind == 'info').map((e) => e.text),
         containsAll(['Сервер остановлен', 'Сервер запущен на порту $port']));
   });
+
+  test('app client: address forms, default port, releases from the server', () async {
+    expect(MyServer.normalize('192.168.1.5'), 'http://192.168.1.5:8765');
+    expect(MyServer.normalize(' 192.168.1.5:9000/ '), 'http://192.168.1.5:9000');
+    expect(MyServer.normalize('http://pc.local'), 'http://pc.local:8765');
+    expect(MyServer.normalize('http://pc.local:8765///'), 'http://pc.local:8765');
+    // A complete https address (a tunnel, a reverse proxy) is left as typed.
+    expect(MyServer.normalize('https://music.example.org'), 'https://music.example.org');
+    expect(MyServer.normalize('https://music.example.org/hamsterfy/'), 'https://music.example.org/hamsterfy');
+    expect(MyServer.normalize(''), '');
+
+    await boot();
+    final app = MyServer('127.0.0.1:${http_.port}');
+    expect(await app.health(), 1);
+    final found = await app.search('ночной');
+    expect(found.tracks.first.url, startsWith('http://127.0.0.1:${http_.port}/api/stream/'));
+    expect(found.albums, isEmpty); // the fake Archive is down...
+    expect(found.problems.any((p) => p.startsWith('Archive: ')), isTrue); // ...and says so
+    final own = await app.search('ночной', sources: 'library');
+    expect(own.problems, isEmpty);
+    expect(own.tracks.single.title, 'Ночной город');
+  });
 }

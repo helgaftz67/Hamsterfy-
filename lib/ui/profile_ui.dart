@@ -894,7 +894,7 @@ class _ServerPageState extends State<ServerPage> {
     if (_url.text.trim().isEmpty) {
       setState(() {
         _ok = false;
-        _result = 'Введите адрес сервера, например 192.168.1.5:8787';
+        _result = 'Введите адрес сервера, например 192.168.1.5:8765';
       });
       return;
     }
@@ -936,8 +936,8 @@ class _ServerPageState extends State<ServerPage> {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
         children: [
           const Text(
-            'Сервер Hamsterfy запускается на вашем компьютере и раздаёт музыку из папки на все ваши устройства. '
-            'Адрес он показывает при запуске.',
+            'Hamsterfy Server запускается на вашем компьютере и раздаёт музыку на все ваши устройства. '
+            'Адрес показан в его окне — там есть кнопка «Копировать».',
             style: TextStyle(color: kMuted),
           ),
           const SizedBox(height: 18),
@@ -945,7 +945,7 @@ class _ServerPageState extends State<ServerPage> {
             controller: _url,
             keyboardType: TextInputType.url,
             autocorrect: false,
-            decoration: field('Адрес сервера', '192.168.1.5:8787'),
+            decoration: field('Адрес сервера', '192.168.1.5:8765'),
           ),
           const SizedBox(height: 12),
           TextField(
