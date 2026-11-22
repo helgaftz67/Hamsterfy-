@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../main.dart';
+import '../my_server.dart';
 import '../profiles.dart';
 import 'aurora.dart';
 import 'hamsters.dart';
@@ -664,6 +665,12 @@ class ProfilePage extends StatelessWidget {
                     : 'Выключен',
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CachePage())),
               ),
+              _Row(
+                icon: Icons.dns_outlined,
+                title: 'Мой сервер',
+                subtitle: library.hasServer ? library.serverUrl : 'Не подключён',
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServerPage())),
+              ),
               if (library.hidden.isNotEmpty)
                 _Row(
                   icon: Icons.visibility_off_outlined,
@@ -856,6 +863,131 @@ class CachePage extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Connection to the user's own Hamsterfy server.
+class ServerPage extends StatefulWidget {
+  const ServerPage({super.key});
+
+  @override
+  State<ServerPage> createState() => _ServerPageState();
+}
+
+class _ServerPageState extends State<ServerPage> {
+  late final _url = TextEditingController(text: library.serverUrl);
+  late final _token = TextEditingController(text: library.serverToken);
+  bool _busy = false;
+  String? _result;
+  bool _ok = false;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    _token.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect() async {
+    if (_url.text.trim().isEmpty) {
+      setState(() {
+        _ok = false;
+        _result = 'Введите адрес сервера, например 192.168.1.5:8787';
+      });
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _result = null;
+    });
+    try {
+      final tracks = await MyServer(_url.text, token: _token.text).health();
+      library.setServer(MyServer.normalize(_url.text), _token.text);
+      if (!mounted) return;
+      setState(() {
+        _ok = true;
+        _result = 'Сервер подключён. Треков в его папке: $tracks. Ищите через него во вкладке «Поиск».';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _ok = false;
+        _result = e is ServerProblem ? e.message : 'Не удалось подключиться: $e';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    InputDecoration field(String label, String hint) => InputDecoration(
+          labelText: label,
+          hintText: hint,
+          filled: true,
+          fillColor: kSurface,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        );
+    return Scaffold(
+      appBar: AppBar(title: const Text('Мой сервер')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+        children: [
+          const Text(
+            'Сервер Hamsterfy запускается на вашем компьютере и раздаёт музыку из папки на все ваши устройства. '
+            'Адрес он показывает при запуске.',
+            style: TextStyle(color: kMuted),
+          ),
+          const SizedBox(height: 18),
+          TextField(
+            controller: _url,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            decoration: field('Адрес сервера', '192.168.1.5:8787'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _token,
+            autocorrect: false,
+            decoration: field('Ключ доступа (если задан)', 'то, что указано в --token'),
+          ),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: _busy ? null : _connect,
+            child: Text(_busy ? 'Проверяю…' : 'Подключить'),
+          ),
+          if (_result != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(_ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                      size: 20, color: _ok ? const Color(0xFF5ED4A8) : const Color(0xFFFF7A8A)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(_result!, style: const TextStyle(fontWeight: FontWeight.w500))),
+                ],
+              ),
+            ),
+          if (library.hasServer) ...[
+            const SizedBox(height: 22),
+            OutlinedButton.icon(
+              onPressed: () {
+                library.setServer('', '');
+                _url.clear();
+                _token.clear();
+                setState(() {
+                  _ok = true;
+                  _result = 'Сервер отключён. Сохранённая в приложении музыка осталась.';
+                });
+              },
+              icon: const Icon(Icons.link_off_rounded),
+              label: const Text('Отключить сервер'),
+            ),
+          ],
+        ],
       ),
     );
   }

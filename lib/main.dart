@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'audius.dart';
 import 'catalog.dart';
 import 'library.dart';
+import 'my_server.dart';
 import 'player.dart';
 import 'profiles.dart';
 import 'radio.dart';
@@ -27,6 +28,9 @@ final catalog = Catalog();
 final radio = RadioDirectory();
 final songs = SongSearch();
 final audius = Audius();
+
+/// Client for the user's own server, or null when none is set up.
+MyServer? get myServer => library.hasServer ? MyServer(library.serverUrl, token: library.serverToken) : null;
 late final Player player;
 late final Profiles profiles;
 

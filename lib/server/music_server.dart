@@ -47,18 +47,34 @@ class _Song {
 ///   /stream/ID   the audio file, with Range support for seeking
 ///   /cover/ID    embedded artwork
 ///   /rescan      re-read the music folder
+///   /save?id=    keep a track the artist allows to download (Audius)
+///   /saved       what was saved, how much room is left
 ///   /errors      the error journal as JSON
 ///
 /// It serves files the owner put in the folder and relays public catalog
-/// searches. It never fetches audio from anywhere to add to the folder.
+/// searches. The only audio it fetches itself is what an artist published
+/// with downloads allowed; everything else stays a stream or a preview.
 class MusicServer {
-  MusicServer({required this.music, this.token, http.Client? client}) : _client = client ?? http.Client();
+  MusicServer({required this.music, this.token, this.cacheLimitBytes = 20 * 1024 * 1024 * 1024, http.Client? client})
+      : _client = client ?? http.Client();
 
   final Directory music;
 
   /// When set, every request must carry it as `?token=` or a Bearer header.
   final String? token;
   final http.Client _client;
+
+  /// Upper bound for tracks the server saved itself (see /save).
+  final int cacheLimitBytes;
+
+  /// Saved tracks unplayed for this long are removed.
+  static const staleAfter = Duration(days: 30);
+
+  /// Folder inside the music folder for tracks saved through /save, with
+  /// an index of where each came from and when it was last played.
+  Directory get cacheDir => Directory('${music.path}${Platform.pathSeparator}_hamsterfy_saved');
+  File get _indexFile => File('${cacheDir.path}${Platform.pathSeparator}index.json');
+  Map<String, dynamic> _index = {};
 
   final Map<String, _Song> _songs = {};
   final List<LoggedError> errors = [];
@@ -91,6 +107,7 @@ class MusicServer {
     if (!await music.exists()) {
       throw ApiError(500, 'music_folder_missing', 'Папка с музыкой не найдена: ${music.path}');
     }
+    await _loadIndex();
     final found = <String, _Song>{};
     await for (final entity in music.list(recursive: true, followLinks: false)) {
       if (entity is! File) continue;
@@ -111,6 +128,15 @@ class MusicServer {
       } catch (e) {
         log('scan', 'Не удалось прочитать теги файла $relative: $e');
       }
+      // Saved tracks take their names from the index: their files may
+      // carry no tags.
+      final saved = _index[entity.uri.pathSegments.last];
+      if (saved is Map) {
+        title = (saved['title'] ?? title).toString();
+        artist = (saved['artist'] ?? artist).toString();
+        album = (saved['album'] ?? album).toString();
+        if (durationMs == 0) durationMs = saved['durationMs'] as int? ?? 0;
+      }
       found[id] = _Song(id, entity, title, artist, album, durationMs, hasCover);
     }
     _songs
@@ -118,6 +144,13 @@ class MusicServer {
       ..addAll(found);
     lastScan = DateTime.now();
     return found.length;
+  }
+
+  /// Start-up housekeeping: read the folder and clear out stale saves.
+  Future<int> open() async {
+    await scan();
+    final removed = await trimSaved();
+    return removed.isEmpty ? trackCount : await scan();
   }
 
   Map<String, dynamic> _own(_Song s) => {
@@ -157,6 +190,142 @@ class MusicServer {
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
   }
 
+  // ---- Saved tracks -------------------------------------------------------
+
+  Future<void> _loadIndex() async {
+    try {
+      if (await _indexFile.exists()) _index = jsonDecode(await _indexFile.readAsString()) as Map<String, dynamic>;
+    } catch (e) {
+      log('saved', 'Не удалось прочитать список сохранённых треков: $e');
+      _index = {};
+    }
+  }
+
+  Future<void> _saveIndex() async {
+    await cacheDir.create(recursive: true);
+    await _indexFile.writeAsString(jsonEncode(_index));
+  }
+
+  /// Remembers that a saved track was just played.
+  void _touch(_Song song) {
+    final entry = _index[song.file.uri.pathSegments.last];
+    if (entry is Map) {
+      entry['lastPlayed'] = DateTime.now().millisecondsSinceEpoch;
+      unawaited(_saveIndex().catchError((Object e) => log('saved', e)));
+    }
+  }
+
+  /// Saves an Audius track into the server's folder, if its artist allows
+  /// downloads. Anything else is refused with a clear reason.
+  Future<Map<String, dynamic>> save(String? id) async {
+    final raw = (id ?? '').trim();
+    if (raw.isEmpty) throw ApiError(400, 'missing_id', 'Укажите трек: /save?id=au:ИДЕНТИФИКАТОР.');
+    if (!raw.startsWith('au:')) {
+      throw ApiError(400, 'unsupported_source',
+          'Сохранять можно только треки Audius (id начинается с «au:»). Фрагменты песен и радио не сохраняются.');
+    }
+    final trackId = raw.substring(3);
+    final name = 'audius_$trackId.mp3';
+    final existing = _songs.values.where((s) => s.file.uri.pathSegments.last == name).firstOrNull;
+    if (existing != null) return {'ok': true, 'already': true, 'track': _own(existing)};
+
+    final infoRes = await _client
+        .get(Uri.https('api.audius.co', '/v1/tracks/$trackId', {'app_name': Audius.appName}))
+        .timeout(const Duration(seconds: 20));
+    if (infoRes.statusCode == 404) throw ApiError(404, 'track_not_found', 'На Audius нет трека $trackId.');
+    if (infoRes.statusCode != 200) throw ApiError(502, 'source_failed', 'Audius ответил ${infoRes.statusCode}.');
+    final info = jsonDecode(utf8.decode(infoRes.bodyBytes))['data'];
+    if (info is! Map<String, dynamic>) throw ApiError(404, 'track_not_found', 'На Audius нет трека $trackId.');
+    if (!Audius.isFreelyStreamable(info)) {
+      throw ApiError(403, 'not_streamable', 'Этот трек недоступен для свободного прослушивания.');
+    }
+    if (info['is_downloadable'] != true || info['is_download_gated'] == true) {
+      throw ApiError(403, 'download_not_allowed',
+          'Артист не разрешил скачивать этот трек. Его можно слушать онлайн, но сохранять нельзя.');
+    }
+    final track = Audius.parse(jsonEncode({'data': [info]})).single;
+
+    await cacheDir.create(recursive: true);
+    final dest = File('${cacheDir.path}${Platform.pathSeparator}$name');
+    final part = File('${dest.path}.part');
+    try {
+      final res = await _client.send(http.Request('GET', Uri.parse(track.url!)));
+      if (res.statusCode != 200) throw ApiError(502, 'source_failed', 'Audius не отдал файл: ответ ${res.statusCode}.');
+      final sink = part.openWrite();
+      await res.stream.pipe(sink);
+      await part.rename(dest.path);
+    } catch (e) {
+      if (await part.exists()) await part.delete();
+      if (e is ApiError) rethrow;
+      throw ApiError(502, 'source_failed', 'Не удалось скачать файл с Audius: $e');
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _index[name] = {
+      'id': raw,
+      'title': track.title,
+      'artist': track.artist,
+      'album': 'Audius',
+      'durationMs': track.durationMs,
+      'link': track.link,
+      'savedAt': now,
+      'lastPlayed': now,
+    };
+    await _saveIndex();
+    await trimSaved(keep: name);
+    await scan();
+    final song = _songs.values.firstWhere((s) => s.file.uri.pathSegments.last == name);
+    return {'ok': true, 'already': false, 'track': _own(song)};
+  }
+
+  /// Removes saved tracks unplayed for 30 days, then the longest-unplayed
+  /// ones until the folder fits the limit. Returns the removed file names.
+  Future<List<String>> trimSaved({String? keep, DateTime? now}) async {
+    final t0 = (now ?? DateTime.now()).millisecondsSinceEpoch;
+    final removed = <String>[];
+    final files = <String, int>{};
+    if (await cacheDir.exists()) {
+      await for (final f in cacheDir.list()) {
+        if (f is File && _index.containsKey(f.uri.pathSegments.last)) {
+          files[f.uri.pathSegments.last] = await f.length();
+        }
+      }
+    }
+    int last(String name) => ((_index[name] as Map)['lastPlayed'] as int?) ?? 0;
+    Future<void> drop(String name) async {
+      final f = File('${cacheDir.path}${Platform.pathSeparator}$name');
+      if (await f.exists()) await f.delete();
+      _index.remove(name);
+      files.remove(name);
+      removed.add(name);
+    }
+
+    for (final name in files.keys.toList()) {
+      if (name != keep && t0 - last(name) > staleAfter.inMilliseconds) await drop(name);
+    }
+    final byAge = files.keys.where((n) => n != keep).toList()..sort((a, b) => last(a).compareTo(last(b)));
+    var total = files.values.fold(0, (a, b) => a + b);
+    for (final name in byAge) {
+      if (total <= cacheLimitBytes) break;
+      total -= files[name]!;
+      await drop(name);
+    }
+    if (removed.isNotEmpty) await _saveIndex();
+    return removed;
+  }
+
+  Future<Map<String, dynamic>> savedInfo() async {
+    var bytes = 0;
+    final rows = <Map<String, dynamic>>[];
+    for (final name in _index.keys) {
+      final f = File('${cacheDir.path}${Platform.pathSeparator}$name');
+      if (!await f.exists()) continue;
+      final size = await f.length();
+      bytes += size;
+      rows.add({...(_index[name] as Map).cast<String, dynamic>(), 'file': name, 'bytes': size});
+    }
+    return {'count': rows.length, 'bytes': bytes, 'limitBytes': cacheLimitBytes, 'staleAfterDays': staleAfter.inDays, 'tracks': rows};
+  }
+
   // ---- HTTP ----------------------------------------------------------------
 
   Future<HttpServer> start({int port = 8787, Object? address}) async {
@@ -193,6 +362,10 @@ class MusicServer {
           await _json(res, await search(req.uri.queryParameters['q'], req.uri.queryParameters['sources']));
         case 'rescan':
           await _json(res, {'ok': true, 'tracks': await scan()});
+        case 'save':
+          await _json(res, await save(req.uri.queryParameters['id']));
+        case 'saved':
+          await _json(res, await savedInfo());
         case 'errors':
           await _json(res, {'count': errors.length, 'errors': errors.reversed.map((e) => e.toJson()).toList()});
         case 'stream':
@@ -296,6 +469,7 @@ class MusicServer {
       res.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$length');
     }
     res.contentLength = end - start + 1;
+    _touch(song);
     if (req.method != 'HEAD') await res.addStream(song.file.openRead(start, end + 1));
     await res.close();
   }
@@ -368,6 +542,8 @@ th{color:#a39fbc;font-weight:500;font-size:13px}td:last-child{word-break:break-w
 <tr><td><code>/stream/ID</code></td><td>Аудиофайл, с поддержкой перемотки</td></tr>
 <tr><td><code>/cover/ID</code></td><td>Обложка из файла</td></tr>
 <tr><td><code>/rescan</code></td><td>Перечитать папку после добавления файлов</td></tr>
+<tr><td><code>/save?id=au:ID</code></td><td>Сохранить трек Audius, если артист разрешил скачивание</td></tr>
+<tr><td><code>/saved</code></td><td>Что сохранено и сколько места занято</td></tr>
 <tr><td><code>/errors</code></td><td>Журнал ошибок в JSON</td></tr>
 </table></div>
 <h2>Журнал ошибок</h2>

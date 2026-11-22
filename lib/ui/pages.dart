@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../library.dart';
+import '../my_server.dart';
 import '../main.dart';
 import '../models.dart';
 import 'aurora.dart';
@@ -465,7 +466,7 @@ class _ShelfCard extends StatelessWidget {
 
 /// Where the search tab looks: whole tracks on Audius, previews of every
 /// song, or free releases on the Internet Archive.
-enum _Source { audius, previews, free }
+enum _Source { server, audius, previews, free }
 
 class CatalogPage extends StatefulWidget {
   const CatalogPage({super.key});
@@ -478,13 +479,24 @@ class CatalogPage extends StatefulWidget {
 /// catalog where whole releases can be played and downloaded.
 class _CatalogPageState extends State<CatalogPage> {
   final _query = TextEditingController();
-  _Source _source = _Source.audius;
+  late _Source _source = library.hasServer ? _Source.server : _Source.audius;
   Future<List<Track>>? _songs;
+
+  /// Sources the server could not reach during the last search.
+  List<String> _problems = const [];
   Future<List<Album>>? _albums;
 
   void _search() => setState(() {
         final q = _query.text;
+        _problems = const [];
         switch (_source) {
+          case _Source.server:
+            _songs = q.trim().isEmpty
+                ? null
+                : myServer!.search(q).then((found) {
+                    if (mounted) setState(() => _problems = found.problems);
+                    return found.tracks;
+                  });
           case _Source.audius:
             _songs = q.trim().isEmpty ? null : audius.search(q);
           case _Source.previews:
@@ -522,6 +534,7 @@ class _CatalogPageState extends State<CatalogPage> {
               child: Row(
                 children: [
                   for (final (source, label) in [
+                    if (library.hasServer) (_Source.server, 'Мой сервер'),
                     (_Source.audius, 'Целиком · Audius'),
                     (_Source.previews, 'Все песни · 30 сек'),
                     (_Source.free, 'Свободные релизы'),
@@ -548,9 +561,11 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Widget _songList() {
-    final full = _source == _Source.audius;
+    final full = _source == _Source.audius || _source == _Source.server;
     if (_songs == null) {
-      return _Message(full
+      return _Message(_source == _Source.server
+          ? 'Один поиск сразу по папке вашего сервера, Audius и каталогу песен. Сначала показывается то, что играет целиком.'
+          : full
           ? 'Введите название трека или имя исполнителя. Здесь музыка с Audius, которую артисты выложили сами: она играет целиком.'
           : 'Найдётся любая песня. Трек из вашей медиатеки сыграет целиком, остальные — 30-секундным фрагментом со ссылкой на полную версию.');
     }
@@ -561,7 +576,12 @@ class _CatalogPageState extends State<CatalogPage> {
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
           if (snap.hasError) {
-            return _Message('Поиск не отвечает. Проверьте подключение к интернету.', action: 'Повторить', onAction: _search);
+            return _Message(
+                snap.error is ServerProblem
+                    ? snap.error.toString()
+                    : 'Поиск не отвечает. Проверьте подключение к интернету.',
+                action: 'Повторить',
+                onAction: _search);
           }
           final seen = <String>{};
           final List<Track> all;
@@ -582,11 +602,27 @@ class _CatalogPageState extends State<CatalogPage> {
                 ? 'На Audius такого нет. Проверьте написание или поищите во вкладке «Все песни».'
                 : 'Ничего не нашлось. Проверьте написание или попробуйте только имя исполнителя.');
           }
+          final notes = _source == _Source.server ? _problems : const <String>[];
           return ListView.builder(
             padding: const EdgeInsets.only(bottom: 24),
-            itemCount: all.length,
-            itemBuilder: (context, i) =>
-                TrackTile(all[i], playButton: full, onTap: () => player.playAll(all, start: i)),
+            itemCount: all.length + notes.length,
+            itemBuilder: (context, i) {
+              if (i < notes.length) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.error_outline_rounded, size: 18, color: kAmber),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(notes[i], style: const TextStyle(color: kAmber, fontSize: 13))),
+                    ],
+                  ),
+                );
+              }
+              final n = i - notes.length;
+              return TrackTile(all[n], playButton: full, onTap: () => player.playAll(all, start: n));
+            },
           );
         },
       ),

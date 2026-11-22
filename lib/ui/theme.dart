@@ -330,6 +330,13 @@ class TrackTile extends StatelessWidget {
                       await library.remove(t);
                     case 'open':
                       await openLink(context, t.link!);
+                    case 'toServer':
+                      try {
+                        await myServer!.save(t);
+                        if (context.mounted) toast(context, 'Трек сохранён на вашем сервере');
+                      } catch (e) {
+                        if (context.mounted) toast(context, 'Сервер не сохранил трек: $e');
+                      }
                     case 'forget':
                       await library.forget(t);
                       if (context.mounted) {
@@ -352,7 +359,9 @@ class TrackTile extends StatelessWidget {
                   const PopupMenuItem(value: 'playlist', child: Text('Добавить в плейлист')),
                   if (playlist != null) const PopupMenuItem(value: 'unlist', child: Text('Убрать из плейлиста')),
                   if (!t.isLocal && !t.isRadio && !t.isPreview && t.canSave && t.url != null && progress == null)
-                    const PopupMenuItem(value: 'download', child: Text('Скачать')),
+                    const PopupMenuItem(value: 'download', child: Text('Сохранить офлайн')),
+                  if (t.isAudius && t.canSave && library.hasServer)
+                    const PopupMenuItem(value: 'toServer', child: Text('Сохранить на мой сервер')),
                   if (t.isLocal && t.auto) const PopupMenuItem(value: 'pin', child: Text('Сохранить навсегда')),
                   if (t.isLocal && t.url != null)
                     const PopupMenuItem(value: 'remove', child: Text('Удалить скачанный файл')),

@@ -18,7 +18,8 @@ Future<void> main(List<String> args) async {
     stdout.writeln('Hamsterfy Server\n'
         '  --music ПАПКА   папка с музыкой (по умолчанию ./music)\n'
         '  --port НОМЕР    порт (по умолчанию 8787)\n'
-        '  --token КЛЮЧ    ключ доступа; без него сервер открыт всем в сети');
+        '  --token КЛЮЧ    ключ доступа; без него сервер открыт всем в сети\n'
+        '  --cache-gb N    сколько гигабайт отдать под сохранённые треки (по умолчанию 20)');
     return;
   }
   final port = int.tryParse(_arg(args, 'port') ?? '') ?? 8787;
@@ -27,10 +28,16 @@ Future<void> main(List<String> args) async {
 
   // Honour system proxy settings for the catalog lookups.
   final io = HttpClient()..findProxy = HttpClient.findProxyFromEnvironment;
-  final server = MusicServer(music: folder, token: token, client: IOClient(io));
+  final gb = double.tryParse(_arg(args, 'cache-gb') ?? '') ?? 20;
+  final server = MusicServer(
+    music: folder,
+    token: token,
+    cacheLimitBytes: (gb * 1024 * 1024 * 1024).round(),
+    client: IOClient(io),
+  );
 
   try {
-    final n = await server.scan();
+    final n = await server.open();
     stdout.writeln('Папка с музыкой: ${folder.path} — треков: $n');
   } on ApiError catch (e) {
     server.log('scan', e.message);

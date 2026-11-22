@@ -34,6 +34,11 @@ class Library extends ChangeNotifier {
   bool autoCache = true;
   int cacheLimitMb = 2048;
 
+  /// Address and access key of the user's own server, if they run one.
+  String serverUrl = '';
+  String serverToken = '';
+  bool get hasServer => serverUrl.trim().isNotEmpty;
+
   /// Download progress per track id, 0..1.
   final Map<String, double> downloading = {};
 
@@ -71,6 +76,8 @@ class Library extends ChangeNotifier {
     hidden.clear();
     autoCache = true;
     cacheLimitMb = 2048;
+    serverUrl = '';
+    serverToken = '';
     downloading.clear();
     await Directory(_music).create(recursive: true);
     if (!await _file.exists()) {
@@ -98,6 +105,8 @@ class Library extends ChangeNotifier {
     hidden.addAll((j['hidden'] as List? ?? const []).cast<String>());
     autoCache = j['autoCache'] as bool? ?? true;
     cacheLimitMb = j['cacheLimitMb'] as int? ?? 2048;
+    serverUrl = j['serverUrl'] as String? ?? '';
+    serverToken = j['serverToken'] as String? ?? '';
     (j['playlists'] as Map? ?? const {}).forEach((name, ids) {
       playlists[name as String] = (ids as List).cast<String>().toList();
     });
@@ -112,6 +121,8 @@ class Library extends ChangeNotifier {
         'hidden': hidden.toList(),
         'autoCache': autoCache,
         'cacheLimitMb': cacheLimitMb,
+        'serverUrl': serverUrl,
+        'serverToken': serverToken,
       };
 
   void _changed() {
@@ -482,6 +493,12 @@ class Library extends ChangeNotifier {
     for (final t in cached) {
       await remove(t);
     }
+  }
+
+  void setServer(String url, String token) {
+    serverUrl = url.trim();
+    serverToken = token.trim();
+    _changed();
   }
 
   /// Keeps an automatically cached track for good.

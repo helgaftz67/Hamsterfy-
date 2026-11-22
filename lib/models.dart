@@ -51,6 +51,9 @@ class Track {
   /// Whether the app may keep an offline copy (cache or download).
   final bool canSave;
 
+  /// A file that lives on the user's own Hamsterfy server.
+  bool get isServer => id.startsWith('sv:');
+
   /// A track streamed in full from Audius.
   bool get isAudius => id.startsWith('au:');
 
