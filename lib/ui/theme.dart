@@ -15,8 +15,8 @@ const kSurface = Color(0xFF17151B);
 const kSunken = Color(0xFF242029);
 const kAccent = Color(0xFFFFB48C); // peach: selection, links, hearts
 const kAmber = Color(0xFFFFE7A3); // cream: notes, warnings, small accents
-const kMuted = Color(0xFFA9A1A8);
-const kInk = Color(0xFFF5F1EC);
+const kMuted = Color(0xFFC9C6CC);
+const kInk = Color(0xFFFFFFFF);
 
 /// Primary buttons: a warm cream, the brightest thing on a screen.
 const kCream = Color(0xFFFFF0BA);
@@ -65,6 +65,7 @@ ThemeData buildTheme() {
       iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(size: 26, color: states.contains(WidgetState.selected) ? kInk : kMuted)),
     ),
+    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: Colors.white)),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: kCream,

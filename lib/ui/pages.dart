@@ -258,7 +258,7 @@ class _WaveState extends State<_Wave> with SingleTickerProviderStateMixin {
         button: true,
         label: active ? 'Поставить волну на паузу' : 'Запустить мою волну',
         child: Opacity(
-          opacity: widget.enabled ? 1 : .5,
+          opacity: widget.enabled ? 1 : .85,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(40),
             child: GestureDetector(
@@ -340,7 +340,7 @@ class _Quick extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Opacity(
-        opacity: onTap == null ? .45 : 1,
+        opacity: onTap == null ? .8 : 1,
         child: Pressable(
           label: label,
           onTap: onTap,
@@ -620,7 +620,7 @@ class _CatalogPageState extends State<CatalogPage> {
           dense: true,
           leading: const Icon(Icons.search_rounded, size: 18, color: kAccent),
           title: Text('Искать «${_query.text.trim()}» везде',
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, color: kAccent)),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, color: Colors.white)),
           onTap: _run,
         ),
       ],
@@ -816,7 +816,7 @@ class _CatalogPageState extends State<CatalogPage> {
                       margin: const EdgeInsets.only(right: 6),
                       decoration: BoxDecoration(color: kSunken, borderRadius: BorderRadius.circular(4)),
                       child: const Text('Archive',
-                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: kAccent)),
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white)),
                     ),
                     Expanded(child: Text(a.artist, maxLines: 1, overflow: TextOverflow.ellipsis)),
                   ],
