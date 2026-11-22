@@ -25,9 +25,9 @@ jobs:
           name: Hamsterfy-windows
           path: build/windows/x64/runner/Release
           if-no-files-found: error
-      - run: dart compile exe bin/server.dart -o hamsterfy-server.exe
+      - run: dart build cli --target bin/server.dart -o server-build
       - uses: actions/upload-artifact@v4
         with:
           name: Hamsterfy-server-windows
-          path: hamsterfy-server.exe
+          path: server-build/bundle
           if-no-files-found: error

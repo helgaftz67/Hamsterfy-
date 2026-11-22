@@ -2,7 +2,7 @@
 //
 //   dart run bin/server.dart --music "D:\Music" --port 8787 --token secret
 //
-// Or build a single program: dart compile exe bin/server.dart -o hamsterfy-server
+// Or build a standalone program: dart build cli --target bin/server.dart -o server-build
 import 'dart:io';
 
 import 'package:hamsterfy/server/music_server.dart';
